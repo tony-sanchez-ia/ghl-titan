@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Clock, Video, MapPin, CheckCircle2, CalendarDays } from 'lucide-react'
+import { Clock, Video, MapPin, CheckCircle2, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
 import { ui } from '@/shared/lib/ui'
 import { createPublicBooking } from '@/actions/calendars'
 import type { DaySlots } from '../services/availability'
@@ -12,21 +12,65 @@ interface Props {
   days: DaySlots[]
 }
 
+const WEEKDAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'] // semana empieza en lunes
+
 function locationLabel(type: Calendar['location_type']): string {
   if (type === 'google_meet') return 'Google Meet'
   if (type === 'custom_link') return 'Videollamada'
   return 'Presencial'
 }
 
+function pad(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+/** Etiqueta del mes (ej. "junio 2026") sin depender de la zona del navegador. */
+function monthLabel(year: number, month: number): string {
+  const d = new Date(Date.UTC(year, month, 1))
+  return new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(d)
+}
+
 export function BookingFlow({ calendar, days }: Props) {
-  const [selectedDate, setSelectedDate] = useState<string | null>(days[0]?.date ?? null)
+  const byDate = new Map(days.map((d) => [d.date, d]))
+  const firstDate = days[0]?.date ?? null
+
+  const [selectedDate, setSelectedDate] = useState<string | null>(firstDate)
   const [selectedSlot, setSelectedSlot] = useState<{ iso: string; time: string } | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<{ time: string; locationType: string; locationValue: string | null } | null>(null)
 
-  const dayData = days.find((d) => d.date === selectedDate)
+  // Mes mostrado en el calendario (deriva del primer día disponible)
+  const initial = firstDate ? firstDate.split('-').map(Number) : null
+  const [view, setView] = useState<{ y: number; m: number }>(
+    initial ? { y: initial[0], m: initial[1] - 1 } : { y: 2026, m: 0 }
+  )
+
+  const dayData = selectedDate ? byDate.get(selectedDate) : undefined
   const LocationIcon = calendar.location_type === 'in_person' ? MapPin : Video
+
+  // Límites de navegación de mes (según días disponibles)
+  const monthIndex = (ymd: string) => {
+    const [y, m] = ymd.split('-').map(Number)
+    return y * 12 + (m - 1)
+  }
+  const minMonth = firstDate ? monthIndex(firstDate) : 0
+  const maxMonth = days.length ? monthIndex(days[days.length - 1].date) : 0
+  const curMonth = view.y * 12 + view.m
+
+  function shiftMonth(delta: number) {
+    const next = curMonth + delta
+    if (next < minMonth || next > maxMonth) return
+    setView({ y: Math.floor(next / 12), m: next % 12 })
+  }
+
+  // Construye las celdas del mes mostrado
+  const daysInMonth = new Date(Date.UTC(view.y, view.m + 1, 0)).getUTCDate()
+  const firstDow = new Date(Date.UTC(view.y, view.m, 1)).getUTCDay() // 0=domingo
+  const leadingBlanks = (firstDow + 6) % 7 // semana empieza en lunes
+  const cells: (string | null)[] = []
+  for (let i = 0; i < leadingBlanks; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(`${view.y}-${pad(view.m + 1)}-${pad(d)}`)
 
   async function handleSubmit(formData: FormData) {
     if (!selectedSlot) return
@@ -91,37 +135,74 @@ export function BookingFlow({ calendar, days }: Props) {
 
       {!selectedSlot ? (
         <div className="grid md:grid-cols-2 gap-0">
-          {/* Días */}
-          <div className="p-4 border-b md:border-b-0 md:border-r border-border max-h-96 overflow-y-auto">
-            <p className="text-xs font-medium text-muted uppercase tracking-wide mb-2 px-2">Elige día</p>
-            <div className="space-y-1">
-              {days.map((d) => (
-                <button
-                  key={d.date}
-                  onClick={() => setSelectedDate(d.date)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm capitalize transition-colors ${
-                    selectedDate === d.date ? 'bg-primary-soft text-primary font-medium' : 'hover:bg-bg'
-                  }`}
-                >
-                  {d.label} <span className="text-muted">({d.slots.length})</span>
-                </button>
-              ))}
+          {/* Calendario del mes */}
+          <div className="p-5 border-b md:border-b-0 md:border-r border-border">
+            <div className="flex items-center justify-between mb-3">
+              <button
+                onClick={() => shiftMonth(-1)}
+                disabled={curMonth <= minMonth}
+                className="p-1.5 rounded-lg hover:bg-bg disabled:opacity-30 disabled:hover:bg-transparent"
+                aria-label="Mes anterior"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span className="text-sm font-medium capitalize">{monthLabel(view.y, view.m)}</span>
+              <button
+                onClick={() => shiftMonth(1)}
+                disabled={curMonth >= maxMonth}
+                className="p-1.5 rounded-lg hover:bg-bg disabled:opacity-30 disabled:hover:bg-transparent"
+                aria-label="Mes siguiente"
+              >
+                <ChevronRight size={18} />
+              </button>
             </div>
+
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {WEEKDAYS.map((w) => (
+                <div key={w} className="text-xs text-muted font-medium py-1">{w}</div>
+              ))}
+              {cells.map((date, i) => {
+                if (!date) return <div key={`b${i}`} />
+                const available = byDate.has(date)
+                const dayNum = Number(date.split('-')[2])
+                const isSelected = selectedDate === date
+                return (
+                  <button
+                    key={date}
+                    onClick={() => available && setSelectedDate(date)}
+                    disabled={!available}
+                    className={`aspect-square rounded-lg text-sm transition-colors ${
+                      isSelected
+                        ? 'bg-primary text-primary-foreground font-semibold'
+                        : available
+                          ? 'text-fg hover:bg-primary-soft font-medium'
+                          : 'text-muted/40 cursor-default'
+                    }`}
+                  >
+                    {dayNum}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-xs text-muted mt-3 text-center">Elige un día disponible (resaltado).</p>
           </div>
-          {/* Horas */}
-          <div className="p-4 max-h-96 overflow-y-auto">
-            <p className="text-xs font-medium text-muted uppercase tracking-wide mb-2 px-2 capitalize">{dayData?.label}</p>
-            <div className="grid grid-cols-3 gap-2">
-              {dayData?.slots.map((s) => (
-                <button
-                  key={s.iso}
-                  onClick={() => setSelectedSlot(s)}
-                  className={`${ui.button} px-2 py-2 text-sm`}
-                >
-                  {s.time}
-                </button>
-              ))}
-            </div>
+
+          {/* Horas del día seleccionado */}
+          <div className="p-5 max-h-[22rem] overflow-y-auto">
+            <p className="text-xs font-medium text-muted uppercase tracking-wide mb-3 capitalize">
+              {dayData ? dayData.label : 'Selecciona un día'}
+            </p>
+            {dayData ? (
+              <div className="grid grid-cols-3 gap-2">
+                {dayData.slots.map((s) => (
+                  <button key={s.iso} onClick={() => setSelectedSlot(s)} className={`${ui.button} px-2 py-2 text-sm`}>
+                    {s.time}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted">Elige un día en el calendario para ver las horas.</p>
+            )}
           </div>
         </div>
       ) : (

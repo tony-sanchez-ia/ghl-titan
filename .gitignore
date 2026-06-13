@@ -70,3 +70,6 @@ referencias/
 
 # Asset de skill con API key embebida (no subir)
 .claude/skills/video-visuals/assets/levy.png
+
+# TypeScript build cache
+*.tsbuildinfo
