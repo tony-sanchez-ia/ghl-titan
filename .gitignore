@@ -73,3 +73,6 @@ referencias/
 
 # TypeScript build cache
 *.tsbuildinfo
+
+# Exports de conversación (contienen transcript con secretos leídos — NUNCA subir)
+exports/
