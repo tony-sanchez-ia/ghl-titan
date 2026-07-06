@@ -10,15 +10,26 @@ import {
   materializeRecipients,
   processCampaignBatch,
 } from '@/features/marketing/services/campaign-engine'
-import type { CampaignAudience, EmailBlock, EmailCampaign } from '@/types/database'
+import {
+  columnCount,
+  defaultDesign,
+  designIsEmpty,
+  migrateDesign,
+} from '@/features/marketing/services/design'
+import { sanitizeInlineHtml, sanitizeRawHtml } from '@/features/marketing/services/sanitize'
+import type { CampaignAudience, EmailCampaign, EmailDesign } from '@/types/database'
 
 const blockSchema = z.object({
   id: z.string().min(1).max(64),
-  type: z.enum(['header', 'text', 'image', 'button', 'divider', 'spacer', 'footer']),
+  type: z.enum([
+    'header', 'text', 'image', 'button', 'divider', 'spacer', 'footer',
+    'social', 'video', 'form', 'html',
+  ]),
   config: z.object({
     logo_url: z.string().trim().url().max(1000).optional().or(z.literal('')),
     title: z.string().max(200).optional(),
     text: z.string().max(10000).optional(),
+    html: z.string().max(20000).optional(),
     size: z.enum(['normal', 'title', 'subtitle']).optional(),
     align: z.enum(['left', 'center', 'right']).optional(),
     image_url: z.string().trim().url().max(1000).optional().or(z.literal('')),
@@ -28,34 +39,71 @@ const blockSchema = z.object({
     url: z.string().trim().url().max(1000).optional().or(z.literal('')),
     height: z.number().int().min(4).max(160).optional(),
     footer_text: z.string().max(2000).optional(),
+    networks: z
+      .array(
+        z.object({
+          network: z.enum(['facebook', 'instagram', 'x', 'youtube', 'linkedin', 'tiktok', 'whatsapp']),
+          url: z.string().trim().url().max(1000).or(z.literal('')),
+        })
+      )
+      .max(7)
+      .optional(),
+    video_url: z.string().trim().url().max(1000).optional().or(z.literal('')),
+    thumbnail_url: z.string().trim().url().max(1000).optional().or(z.literal('')),
+    form_id: z.string().uuid().optional(),
   }),
 })
 
-const designSchema = z.array(blockSchema).max(40, 'El email no puede tener más de 40 bloques')
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Color inválido')
 
-/** Limpia strings vacíos de URLs opcionales para no guardar '' en el diseño. */
-function normalizeDesign(design: z.infer<typeof designSchema>): EmailBlock[] {
-  return design.map((b) => ({
-    ...b,
-    config: Object.fromEntries(Object.entries(b.config).filter(([, v]) => v !== '' && v !== undefined)),
-  }))
+const sectionSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    layout: z.enum(['1', '2', '3', '4', '1/3:2/3', '2/3:1/3', '1/4:3/4', '3/4:1/4']),
+    config: z.object({
+      background_color: hexColor.optional(),
+      padding: z.number().int().min(0).max(80).optional(),
+    }),
+    columns: z.array(z.array(blockSchema).max(30)).min(1).max(4),
+  })
+  .refine((s) => s.columns.length === columnCount(s.layout), {
+    message: 'Las columnas no cuadran con el diseño de la sección',
+  })
+
+const designSchema = z.object({
+  version: z.literal(2),
+  styles: z.object({ background_color: hexColor, button_color: hexColor }),
+  sections: z.array(sectionSchema).max(20, 'El email no puede tener más de 20 secciones'),
+})
+
+/** Limpia strings vacíos, y SANEA el HTML de usuario (texto con formato y bloque código). */
+function normalizeDesign(design: z.infer<typeof designSchema>): EmailDesign {
+  return {
+    ...design,
+    sections: design.sections.map((s) => ({
+      ...s,
+      columns: s.columns.map((col) =>
+        col.map((b) => {
+          const config = Object.fromEntries(
+            Object.entries(b.config).filter(([, v]) => v !== '' && v !== undefined)
+          ) as typeof b.config
+          if (typeof config.html === 'string') {
+            config.html =
+              b.type === 'html' ? sanitizeRawHtml(config.html) : sanitizeInlineHtml(config.html)
+          }
+          if (config.networks) config.networks = config.networks.filter((n) => n.url !== '')
+          return { ...b, config }
+        })
+      ),
+    })),
+  }
 }
-
-const DEFAULT_DESIGN: EmailBlock[] = [
-  { id: 'b-header', type: 'header', config: { title: 'GHL Titan' } },
-  {
-    id: 'b-text',
-    type: 'text',
-    config: { text: 'Hola {{nombre}},\n\nEscribe aquí tu mensaje.', size: 'normal', align: 'left' },
-  },
-  { id: 'b-footer', type: 'footer', config: { footer_text: 'GHL Titan · Titanic Factory' } },
-]
 
 export async function createCampaign(): Promise<{ id?: string; error?: string }> {
   try {
     const row = await queryOne<{ id: string }>(
       `insert into email_campaigns (name, subject, design) values ($1, $2, $3) returning id`,
-      ['Campaña sin título', '', JSON.stringify(DEFAULT_DESIGN)]
+      ['Campaña sin título', '', JSON.stringify(defaultDesign())]
     )
     revalidatePath('/marketing')
     return { id: row!.id }
@@ -85,7 +133,7 @@ const saveDesignSchema = z.object({
 
 export async function saveCampaignDesign(
   id: string,
-  input: { subject: string; design: EmailBlock[] }
+  input: { subject: string; design: EmailDesign }
 ): Promise<{ success?: boolean; error?: string }> {
   const parsed = saveDesignSchema.safeParse(input)
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Diseño inválido' }
@@ -158,11 +206,12 @@ export async function sendCampaign(
   if (campaign.status !== 'draft' && campaign.status !== 'scheduled')
     return { error: 'Esta campaña ya se envió' }
   if (!campaign.subject.trim()) return { error: 'Escribe el asunto antes de enviar' }
-  if (campaign.design.length === 0) return { error: 'El email está vacío' }
+  const design = migrateDesign(campaign.design)
+  if (designIsEmpty(design)) return { error: 'El email está vacío' }
 
   // Congelar snapshot: HTML de referencia + links reales (validación del tracking)
-  const html = renderEmailHtml({ blocks: campaign.design, merge: {}, unsubscribeUrl: null })
-  const linkUrls = extractDesignUrls(campaign.design)
+  const html = renderEmailHtml({ design, merge: {}, unsubscribeUrl: null })
+  const linkUrls = extractDesignUrls(design)
 
   if (mode === 'schedule') {
     await query(
@@ -222,10 +271,11 @@ export async function saveAsTemplate(
     [campaignId]
   )
   if (!campaign) return { error: 'Campaña no encontrada' }
-  if (campaign.design.length === 0) return { error: 'El email está vacío' }
+  const design = migrateDesign(campaign.design)
+  if (designIsEmpty(design)) return { error: 'El email está vacío' }
   await query(`insert into email_templates (name, design) values ($1, $2)`, [
     parsed.data,
-    JSON.stringify(campaign.design),
+    JSON.stringify(design),
   ])
   revalidatePath('/marketing')
   return { success: true }
@@ -235,7 +285,7 @@ export async function saveAsTemplate(
 export async function createCampaignFromTemplate(
   templateId: string
 ): Promise<{ id?: string; error?: string }> {
-  const template = await queryOne<{ name: string; design: EmailBlock[] }>(
+  const template = await queryOne<{ name: string; design: EmailDesign }>(
     `select name, design from email_templates where id = $1`,
     [templateId]
   )
@@ -290,7 +340,7 @@ export async function sendCampaignTest(id: string): Promise<{ success?: boolean;
 
   const merge = { nombre: '(Nombre)', apellido: '(Apellido)', email: admin }
   const html = renderEmailHtml({
-    blocks: campaign.design,
+    design: migrateDesign(campaign.design),
     merge,
     unsubscribeUrl: null, // en la prueba el link de baja no es real
   })

@@ -18,6 +18,15 @@
   BD en Neon (pg directo), auth propia (bcrypt + JWT cookie, AUTH_SECRET), sin RLS. Todo verificado E2E. Ver detalle.
 - PRP-006 COMPLETADO (2026-07-01): automatizaciones VISUALES tipo GHL — builder vertical, triggers
   form/reserva/etiqueta, pasos tipados, ramas por click con tracking /r/[token]. Detalle en neon-migration.md y el PRP.
+- PRP-008 COMPLETADO (2026-07-06): EDITOR DE EMAILS V2 — secciones con columnas tipo GHL (8 layouts,
+  fondo/padding por sección, apilado móvil vía inline-block + media query), 5 bloques nuevos (redes
+  sociales con iconos propios en public/email/social, vídeo con miniatura YouTube auto, formulario,
+  código HTML saneado, texto con negrita/cursiva/enlaces trackeados vía contentEditable propio),
+  estilos globales (fondo + color de botones) y "ver este email en el navegador" (/e/[click_token]).
+  Diseño versionado en el MISMO jsonb (version:2, migración perezosa V1→V2 sin SQL; sent nunca se
+  reescribe). Saneadores sin dependencias en services/sanitize.ts (whitelist inline + limpieza raw).
+  GOTCHAS nuevos en el PRP: toolbars flotantes tapan contenedores vacíos (usar barras estáticas);
+  contentEditable pierde la selección si el toolbar no hace preventDefault en mousedown.
 - PRP-007 COMPLETADO (2026-07-05): EMAIL MARKETING tipo GHL — sección /marketing (Estadísticas/Campañas/
   Plantillas), diseñador visual por bloques (una columna, sin librerías), campañas a todos/por etiquetas
   (ahora o programadas), cola idempotente por lotes (claim atómico, 25/cron + 10 inline), tracking de

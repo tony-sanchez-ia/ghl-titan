@@ -1,4 +1,5 @@
-import { ImageIcon } from 'lucide-react'
+import { Code2, FileInput, ImageIcon, Play, Share2 } from 'lucide-react'
+import { youtubeThumbnail } from '../../services/design'
 import type { EmailBlock } from '@/types/database'
 
 const TEXT_SIZES = {
@@ -10,7 +11,7 @@ const TEXT_SIZES = {
 const ALIGN = { left: 'text-left', center: 'text-center', right: 'text-right' } as const
 
 /** Vista previa visual de un bloque dentro del lienzo del diseñador (espejo de render.ts). */
-export function BlockPreview({ block }: { block: EmailBlock }) {
+export function BlockPreview({ block, buttonColor }: { block: EmailBlock; buttonColor: string }) {
   const c = block.config
   const align = ALIGN[c.align ?? 'left']
 
@@ -29,6 +30,15 @@ export function BlockPreview({ block }: { block: EmailBlock }) {
         </div>
       )
     case 'text':
+      if (c.html) {
+        // HTML ya saneado (whitelist b/i/a/br): espejo del email real
+        return (
+          <div
+            className={`px-8 py-3 break-words text-slate-900 ${TEXT_SIZES[c.size ?? 'normal']} ${align} [&_a]:text-[#2563eb] [&_a]:underline`}
+            dangerouslySetInnerHTML={{ __html: c.html }}
+          />
+        )
+      }
       return (
         <div className={`px-8 py-3 whitespace-pre-wrap break-words text-slate-900 ${TEXT_SIZES[c.size ?? 'normal']} ${align}`}>
           {c.text || <span className="text-slate-400">Escribe tu texto…</span>}
@@ -51,7 +61,10 @@ export function BlockPreview({ block }: { block: EmailBlock }) {
     case 'button':
       return (
         <div className={`px-8 py-4 ${align}`}>
-          <span className="inline-block rounded-lg bg-[#2563eb] px-7 py-3 text-[15px] font-semibold text-white">
+          <span
+            className="inline-block rounded-lg px-7 py-3 text-[15px] font-semibold text-white"
+            style={{ background: buttonColor }}
+          >
             {c.label || 'Botón sin texto'}
           </span>
         </div>
@@ -68,6 +81,96 @@ export function BlockPreview({ block }: { block: EmailBlock }) {
       return (
         <div className="px-8 pt-5 pb-1 text-center text-xs leading-relaxed text-slate-500 whitespace-pre-wrap">
           {c.footer_text || <span className="text-slate-400">Datos del negocio…</span>}
+        </div>
+      )
+    case 'social': {
+      const nets = (c.networks ?? []).filter((n) => n.url)
+      if (nets.length === 0) {
+        return (
+          <div className="px-8 py-4 text-center text-sm text-slate-400">
+            <Share2 size={16} className="inline-block mr-1.5" />
+            Añade tus redes sociales
+          </div>
+        )
+      }
+      return (
+        <div className={`px-8 py-3.5 ${ALIGN[c.align ?? 'center']}`}>
+          {nets.map((n) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={n.network} src={`/email/social/${n.network}.png`} alt={n.network} className="inline-block w-7 h-7 mx-[5px]" />
+          ))}
+        </div>
+      )
+    }
+    case 'video': {
+      if (!c.video_url) {
+        return (
+          <div className="px-8 py-4 text-center text-sm text-slate-400">
+            <Play size={16} className="inline-block mr-1.5" />
+            Pega el enlace de un vídeo (YouTube, Vimeo…)
+          </div>
+        )
+      }
+      const thumb = c.thumbnail_url || youtubeThumbnail(c.video_url)
+      return (
+        <div className={`px-8 py-3 ${ALIGN[c.align ?? 'center']}`}>
+          {thumb ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={thumb} alt="Vídeo" className="w-full rounded-lg" />
+              <span className="mt-2 inline-block text-sm font-semibold" style={{ color: buttonColor }}>
+                ▶&nbsp; Ver el vídeo
+              </span>
+            </>
+          ) : (
+            <span
+              className="inline-block rounded-lg px-7 py-3 text-[15px] font-semibold text-white"
+              style={{ background: buttonColor }}
+            >
+              ▶&nbsp; Ver el vídeo
+            </span>
+          )}
+        </div>
+      )
+    }
+    case 'form':
+      if (!c.url || !c.label) {
+        return (
+          <div className="px-8 py-4 text-center text-sm text-slate-400">
+            <FileInput size={16} className="inline-block mr-1.5" />
+            Elige un formulario de captura
+          </div>
+        )
+      }
+      return (
+        <div className={`px-8 py-4 ${ALIGN[c.align ?? 'center']}`}>
+          <span
+            className="inline-block rounded-lg px-7 py-3 text-[15px] font-semibold text-white"
+            style={{ background: buttonColor }}
+          >
+            {c.label}
+          </span>
+        </div>
+      )
+    case 'html':
+      if (!c.html) {
+        return (
+          <div className="px-8 py-4 text-center text-sm text-slate-400">
+            <Code2 size={16} className="inline-block mr-1.5" />
+            Pega tu código HTML (avanzado)
+          </div>
+        )
+      }
+      // aislado en iframe sandbox: su CSS/HTML no puede romper el editor
+      return (
+        <div className="px-8 py-1">
+          <iframe
+            sandbox=""
+            srcDoc={`<body style="margin:0;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;color:#0f172a">${c.html}</body>`}
+            className="w-full border-0 pointer-events-none"
+            style={{ height: 120 }}
+            title="Vista previa del HTML"
+          />
         </div>
       )
   }

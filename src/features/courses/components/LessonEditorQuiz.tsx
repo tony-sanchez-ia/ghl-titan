@@ -3,12 +3,9 @@
 import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { ui } from '@/shared/lib/ui'
+import { uid } from '@/shared/lib/uid'
 import { updateLesson } from '@/actions/courses'
 import type { CourseLesson, Quiz, QuizQuestion } from '@/types/database'
-
-function uid(): string {
-  return crypto.randomUUID()
-}
 
 export function LessonEditorQuiz({ lesson, courseId }: { lesson: CourseLesson; courseId: string }) {
   const [quiz, setQuiz] = useState<Quiz>(

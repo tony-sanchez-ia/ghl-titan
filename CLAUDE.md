@@ -477,6 +477,16 @@ npm run lint         # ESLint
   Sintoma delator: OOM recurrente del dev server + error MODULE_UNPARSABLE en el log.
 - **Aplicar en**: Todos los proyectos
 
+### 2026-07-06: crypto.randomUUID NO existe en contextos no seguros (acceso LAN por http://IP)
+- **Error**: `crypto.randomUUID is not a function` al usar el editor desde otra máquina de la LAN
+  (`http://192.168.1.20:3000`). randomUUID solo existe en contextos seguros (HTTPS o localhost);
+  en localhost funciona y por IP revienta — familia del gotcha LAN de 2026-06-13.
+- **Fix**: helper `uid()` en `src/shared/lib/uid.ts` (usa randomUUID si existe, si no
+  crypto.getRandomValues, que SÍ funciona en contextos no seguros). NUNCA llamar
+  crypto.randomUUID directamente en código de cliente.
+- **Aplicar en**: todos los proyectos que se prueben desde la LAN. Otros APIs con la misma
+  restricción: navigator.clipboard, service workers, geolocation.
+
 ### 2026-07-01: No borrar .next con el dev server corriendo
 - **Error**: `rm -rf .next` con `next dev` activo → el server queda sirviendo 500
   (ENOENT routes-manifest.json) hasta que se reinicia.

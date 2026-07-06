@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { LayoutTemplate, Plus, Trash2 } from 'lucide-react'
 import { ui } from '@/shared/lib/ui'
 import { createCampaignFromTemplate, deleteTemplate } from '@/actions/marketing'
+import { allBlocks, migrateDesign } from '../services/design'
 import type { EmailTemplate } from '@/types/database'
 
 export function TemplateList({ templates }: { templates: EmailTemplate[] }) {
@@ -54,7 +55,8 @@ export function TemplateList({ templates }: { templates: EmailTemplate[] }) {
             </button>
           </div>
           <p className="text-sm text-muted mt-1">
-            {t.design.length} {t.design.length === 1 ? 'bloque' : 'bloques'}
+            {allBlocks(migrateDesign(t.design)).length}{' '}
+            {allBlocks(migrateDesign(t.design)).length === 1 ? 'bloque' : 'bloques'}
           </p>
           <button
             onClick={() => onUse(t.id)}

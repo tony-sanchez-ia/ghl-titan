@@ -231,8 +231,28 @@ export interface AutomationEnrollment {
   updated_at: string
 }
 
-// ── Email Marketing (PRP-007) ────────────────────────────────────────────────
-export type EmailBlockType = 'header' | 'text' | 'image' | 'button' | 'divider' | 'spacer' | 'footer'
+// ── Email Marketing (PRP-007 + bloques V2 de PRP-008) ───────────────────────
+export type EmailBlockType =
+  | 'header'
+  | 'text'
+  | 'image'
+  | 'button'
+  | 'divider'
+  | 'spacer'
+  | 'footer'
+  | 'social'
+  | 'video'
+  | 'form'
+  | 'html'
+
+export type SocialNetwork =
+  | 'facebook'
+  | 'instagram'
+  | 'x'
+  | 'youtube'
+  | 'linkedin'
+  | 'tiktok'
+  | 'whatsapp'
 
 export interface EmailBlock {
   id: string
@@ -242,17 +262,51 @@ export interface EmailBlock {
 export interface EmailBlockConfig {
   logo_url?: string // header
   title?: string // header
-  text?: string // text (admite {{nombre}} {{apellido}} {{email}} y saltos de línea)
+  text?: string // text plano legado (V1: saltos de línea, sin formato)
+  html?: string // text con formato inline (b/i/a saneado) · bloque html (saneado básico)
   size?: 'normal' | 'title' | 'subtitle' // text
-  align?: 'left' | 'center' | 'right' // text, image, button
+  align?: 'left' | 'center' | 'right' // text, image, button, social, video, form
   image_url?: string // image
   alt?: string // image
   link_url?: string // image (opcional: la imagen enlaza)
-  label?: string // button
-  url?: string // button
+  label?: string // button, form (texto del botón)
+  url?: string // button · form (URL pública del formulario, calculada al elegirlo)
   height?: number // spacer (px)
   footer_text?: string // footer (el link de baja se añade siempre)
+  networks?: { network: SocialNetwork; url: string }[] // social
+  video_url?: string // video
+  thumbnail_url?: string // video (auto para YouTube, manual para el resto)
+  form_id?: string // form (formulario de captura elegido)
 }
+
+// ── Diseño V2: secciones con columnas (PRP-008) ──────────────────────────────
+export type SectionLayout = '1' | '2' | '3' | '4' | '1/3:2/3' | '2/3:1/3' | '1/4:3/4' | '3/4:1/4'
+
+export interface EmailSectionConfig {
+  background_color?: string // '#rrggbb'; ausente = transparente (fondo del email)
+  padding?: number // padding vertical en px
+}
+
+export interface EmailSection {
+  id: string
+  layout: SectionLayout
+  config: EmailSectionConfig
+  columns: EmailBlock[][] // un array de bloques por columna (longitud = nº columnas del layout)
+}
+
+export interface EmailDesignStyles {
+  background_color: string // fondo del email
+  button_color: string // botones y bloque formulario
+}
+
+export interface EmailDesign {
+  version: 2
+  styles: EmailDesignStyles
+  sections: EmailSection[]
+}
+
+/** Lo que puede venir de BD: documento V2 o el array plano legado (V1). */
+export type StoredEmailDesign = EmailDesign | EmailBlock[]
 
 export type CampaignStatus = 'draft' | 'scheduled' | 'sending' | 'sent'
 
@@ -265,7 +319,7 @@ export interface EmailCampaign {
   id: string
   name: string
   subject: string
-  design: EmailBlock[]
+  design: StoredEmailDesign
   html_snapshot: string | null
   link_urls: string[]
   status: CampaignStatus
@@ -295,7 +349,7 @@ export interface CampaignRecipient {
 export interface EmailTemplate {
   id: string
   name: string
-  design: EmailBlock[]
+  design: StoredEmailDesign
   created_at: string
   updated_at: string
 }

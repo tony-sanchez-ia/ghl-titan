@@ -3,38 +3,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import {
-  ArrowLeft, ArrowDown, ArrowUp, Check, LayoutTemplate, Loader2, Minus, Monitor, MousePointerClick,
-  MoveVertical, PanelBottom, PanelTop, Plus, Send, Smartphone, Trash2, Type, Image as ImageIcon,
-} from 'lucide-react'
+import { ArrowLeft, Check, LayoutTemplate, Loader2, Monitor, Send, Smartphone, Trash2 } from 'lucide-react'
 import { ui } from '@/shared/lib/ui'
 import {
   cancelSchedule, deleteCampaign, renameCampaign, saveAsTemplate, saveCampaignDesign, sendCampaignTest,
 } from '@/actions/marketing'
-import type { EmailBlock, EmailBlockType, EmailCampaign } from '@/types/database'
-import { BlockPreview } from './blocks/BlockPreview'
+import { DEFAULT_STYLES, migrateDesign } from '../services/design'
+import type {
+  EmailBlock, EmailCampaign, EmailDesign, EmailDesignStyles, EmailSectionConfig, Form,
+} from '@/types/database'
 import { BlockSettings } from './blocks/BlockSettings'
+import { SectionCanvas, type CanvasSelection } from './SectionCanvas'
+import { SectionSettings } from './SectionSettings'
 import { SendDialog } from './SendDialog'
-
-const PALETTE: { type: EmailBlockType; label: string; icon: typeof Type }[] = [
-  { type: 'text', label: 'Texto', icon: Type },
-  { type: 'image', label: 'Imagen', icon: ImageIcon },
-  { type: 'button', label: 'Botón', icon: MousePointerClick },
-  { type: 'divider', label: 'Divisor', icon: Minus },
-  { type: 'spacer', label: 'Espaciador', icon: MoveVertical },
-  { type: 'header', label: 'Cabecera', icon: PanelTop },
-  { type: 'footer', label: 'Pie de página', icon: PanelBottom },
-]
-
-const DEFAULT_CONFIG: Record<EmailBlockType, EmailBlock['config']> = {
-  header: { title: '' },
-  text: { text: '', size: 'normal', align: 'left' },
-  image: { image_url: '', alt: '' },
-  button: { label: 'Más información', url: '', align: 'center' },
-  divider: {},
-  spacer: { height: 24 },
-  footer: { footer_text: '' },
-}
 
 const STATUS_LABEL: Record<EmailCampaign['status'], string> = {
   draft: 'Borrador',
@@ -43,21 +24,62 @@ const STATUS_LABEL: Record<EmailCampaign['status'], string> = {
   sent: 'Enviada',
 }
 
-export function EmailBuilder({ campaign, allTags }: { campaign: EmailCampaign; allTags: string[] }) {
+export function EmailBuilder({
+  campaign,
+  allTags,
+  forms,
+}: {
+  campaign: EmailCampaign
+  allTags: string[]
+  forms: Form[]
+}) {
   const router = useRouter()
   const editable = campaign.status === 'draft' || campaign.status === 'scheduled'
 
   const [name, setName] = useState(campaign.name)
   const [subject, setSubject] = useState(campaign.subject)
-  const [design, setDesign] = useState<EmailBlock[]>(campaign.design)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [design, setDesignState] = useState<EmailDesign>(() => migrateDesign(campaign.design))
+  const [selection, setSelection] = useState<CanvasSelection | null>(null)
   const [view, setView] = useState<'desktop' | 'mobile'>('desktop')
   const [saveState, setSaveState] = useState<'saved' | 'saving' | 'error'>('saved')
-  const [inserting, setInserting] = useState<number | null>(null) // índice donde se está insertando
   const [testState, setTestState] = useState<'idle' | 'sending' | 'sent'>('idle')
   const [sendOpen, setSendOpen] = useState(false)
 
-  const selected = design.find((b) => b.id === selectedId) ?? null
+  const setDesign = (updater: (d: EmailDesign) => EmailDesign) => setDesignState(updater)
+
+  const selectedBlock: EmailBlock | null =
+    selection?.kind === 'block'
+      ? design.sections.flatMap((s) => s.columns.flat()).find((b) => b.id === selection.id) ?? null
+      : null
+  const selectedSection =
+    selection?.kind === 'section'
+      ? design.sections.find((s) => s.id === selection.id) ?? null
+      : null
+
+  function updateBlockConfig(config: EmailBlock['config']) {
+    if (selection?.kind !== 'block') return
+    setDesign((d) => ({
+      ...d,
+      sections: d.sections.map((s) => ({
+        ...s,
+        columns: s.columns.map((col) =>
+          col.map((b) => (b.id === selection.id ? { ...b, config } : b))
+        ),
+      })),
+    }))
+  }
+
+  function updateSectionConfig(config: EmailSectionConfig) {
+    if (selection?.kind !== 'section') return
+    setDesign((d) => ({
+      ...d,
+      sections: d.sections.map((s) => (s.id === selection.id ? { ...s, config } : s)),
+    }))
+  }
+
+  function updateStyles(patch: Partial<EmailDesignStyles>) {
+    setDesign((d) => ({ ...d, styles: { ...d.styles, ...patch } }))
+  }
 
   // ── Autoguardado (debounce) ────────────────────────────────────────────────
   const firstRender = useRef(true)
@@ -87,42 +109,16 @@ export function EmailBuilder({ campaign, allTags }: { campaign: EmailCampaign; a
     }
   }, [subject, design, editable, flushSave])
 
-  // ── Operaciones sobre bloques ──────────────────────────────────────────────
-  function insertBlock(type: EmailBlockType, index: number) {
-    const block: EmailBlock = { id: crypto.randomUUID(), type, config: { ...DEFAULT_CONFIG[type] } }
-    setDesign((d) => [...d.slice(0, index), block, ...d.slice(index)])
-    setSelectedId(block.id)
-    setInserting(null)
-  }
-
-  function moveBlock(id: string, dir: -1 | 1) {
-    setDesign((d) => {
-      const i = d.findIndex((b) => b.id === id)
-      const j = i + dir
-      if (i < 0 || j < 0 || j >= d.length) return d
-      const copy = [...d]
-      ;[copy[i], copy[j]] = [copy[j], copy[i]]
-      return copy
-    })
-  }
-
-  function removeBlock(id: string) {
-    setDesign((d) => d.filter((b) => b.id !== id))
-    if (selectedId === id) setSelectedId(null)
-  }
-
-  function updateSelected(config: EmailBlock['config']) {
-    setDesign((d) => d.map((b) => (b.id === selectedId ? { ...b, config } : b)))
-  }
-
   // ── Acciones de cabecera ───────────────────────────────────────────────────
   async function onSendTest() {
     setTestState('sending')
-    const saved = await flushSave()
-    if (saved && 'error' in saved && saved.error) {
-      setTestState('idle')
-      alert(saved.error)
-      return
+    if (editable) {
+      const saved = await flushSave()
+      if (saved && 'error' in saved && saved.error) {
+        setTestState('idle')
+        alert(saved.error)
+        return
+      }
     }
     const res = await sendCampaignTest(campaign.id)
     if (res.error) {
@@ -132,6 +128,17 @@ export function EmailBuilder({ campaign, allTags }: { campaign: EmailCampaign; a
     }
     setTestState('sent')
     setTimeout(() => setTestState('idle'), 4000)
+  }
+
+  async function onSaveTemplate() {
+    const tplName = prompt('Nombre de la plantilla:', campaign.name)
+    if (!tplName) return
+    if (editable) {
+      const saved = await flushSave()
+      if (saved && 'error' in saved && saved.error) return alert(saved.error)
+    }
+    const res = await saveAsTemplate(campaign.id, tplName)
+    alert(res.error ?? 'Plantilla guardada')
   }
 
   async function onDelete() {
@@ -179,20 +186,7 @@ export function EmailBuilder({ campaign, allTags }: { campaign: EmailCampaign; a
             <Smartphone size={16} />
           </button>
         </div>
-        <button
-          onClick={async () => {
-            const tplName = prompt('Nombre de la plantilla:', campaign.name)
-            if (!tplName) return
-            if (editable) {
-              const saved = await flushSave()
-              if (saved && 'error' in saved && saved.error) return alert(saved.error)
-            }
-            const res = await saveAsTemplate(campaign.id, tplName)
-            alert(res.error ?? 'Plantilla guardada')
-          }}
-          className={`${ui.button} px-3 py-2 text-sm`}
-          title="Guardar como plantilla"
-        >
+        <button onClick={onSaveTemplate} className={`${ui.button} px-3 py-2 text-sm`} title="Guardar como plantilla">
           <LayoutTemplate size={16} />
         </button>
         <button onClick={onSendTest} disabled={testState === 'sending'} className={`${ui.button} px-3 py-2 text-sm`}>
@@ -255,57 +249,67 @@ export function EmailBuilder({ campaign, allTags }: { campaign: EmailCampaign; a
 
       {/* Lienzo + panel de ajustes */}
       <div className="flex gap-5 items-start">
-        <div className="flex-1 rounded-xl bg-slate-100 dark:bg-slate-900/40 border border-border p-6 overflow-x-auto">
+        <div
+          className="flex-1 rounded-xl border border-border p-6 overflow-x-auto"
+          style={{ background: design.styles.background_color }}
+          onClick={() => setSelection(null)}
+        >
           <div
             className="mx-auto transition-all"
             style={{ width: view === 'mobile' ? 375 : 600, maxWidth: '100%' }}
           >
-            <div className="bg-white rounded-[14px] border border-slate-200 overflow-hidden shadow-sm">
-              {design.length === 0 && (
-                <p className="p-10 text-center text-sm text-slate-400">El email está vacío. Añade un bloque.</p>
-              )}
-              {design.map((block, i) => (
-                <div key={block.id}>
-                  {editable && <InsertPoint index={i} inserting={inserting} setInserting={setInserting} insertBlock={insertBlock} />}
-                  <div
-                    onClick={editable ? () => setSelectedId(block.id) : undefined}
-                    className={`relative group ${editable ? 'cursor-pointer' : ''} ${
-                      selectedId === block.id
-                        ? 'ring-2 ring-primary ring-inset'
-                        : editable
-                          ? 'hover:ring-1 hover:ring-primary/40 hover:ring-inset'
-                          : ''
-                    }`}
-                  >
-                    <BlockPreview block={block} />
-                    {editable && selectedId === block.id && (
-                      <div className="absolute right-1.5 top-1.5 flex items-center gap-0.5 rounded-lg bg-slate-900 text-white shadow px-1 py-0.5">
-                        <button onClick={(e) => { e.stopPropagation(); moveBlock(block.id, -1) }} disabled={i === 0} className="p-1 disabled:opacity-30" title="Subir">
-                          <ArrowUp size={13} />
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); moveBlock(block.id, 1) }} disabled={i === design.length - 1} className="p-1 disabled:opacity-30" title="Bajar">
-                          <ArrowDown size={13} />
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); removeBlock(block.id) }} className="p-1 text-red-300" title="Quitar">
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {editable && <InsertPoint index={design.length} inserting={inserting} setInserting={setInserting} insertBlock={insertBlock} />}
-              <div className="h-5" />
-            </div>
+            <SectionCanvas
+              design={design}
+              setDesign={setDesign}
+              selection={selection}
+              setSelection={setSelection}
+              editable={editable}
+              mobile={view === 'mobile'}
+              buttonColor={design.styles.button_color}
+            />
             <p className="py-3 text-center text-xs text-slate-400">
               Recibes este email porque estás en nuestra lista de contactos. · <span className="underline">Darse de baja</span>
             </p>
           </div>
         </div>
 
-        {editable && selected && (
+        {editable && (
           <div className={`${ui.card} w-80 shrink-0 p-4 sticky top-4`}>
-            <BlockSettings block={selected} onChange={updateSelected} />
+            {selectedBlock && <BlockSettings block={selectedBlock} onChange={updateBlockConfig} forms={forms} />}
+            {selectedSection && <SectionSettings section={selectedSection} onChange={updateSectionConfig} />}
+            {!selectedBlock && !selectedSection && (
+              <div className="space-y-4">
+                <h3 className="font-semibold text-sm">Estilos del email</h3>
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-medium text-muted">Color de fondo</span>
+                  <input
+                    type="color"
+                    value={design.styles.background_color}
+                    onChange={(e) => updateStyles({ background_color: e.target.value })}
+                    className="h-9 w-12 rounded border border-border cursor-pointer bg-card block"
+                  />
+                </label>
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-medium text-muted">Color de los botones</span>
+                  <input
+                    type="color"
+                    value={design.styles.button_color}
+                    onChange={(e) => updateStyles({ button_color: e.target.value })}
+                    className="h-9 w-12 rounded border border-border cursor-pointer bg-card block"
+                  />
+                </label>
+                <button
+                  onClick={() => updateStyles({ ...DEFAULT_STYLES })}
+                  className={`${ui.button} px-2.5 py-1.5 text-xs`}
+                >
+                  Restaurar colores por defecto
+                </button>
+                <p className="text-xs text-muted">
+                  Pulsa un bloque o una sección del email para editarlos. Estos colores se aplican a
+                  todo el email.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -313,53 +317,6 @@ export function EmailBuilder({ campaign, allTags }: { campaign: EmailCampaign; a
       {sendOpen && (
         <SendDialog campaignId={campaign.id} allTags={allTags} onClose={() => setSendOpen(false)} />
       )}
-    </div>
-  )
-}
-
-/** Punto de inserción entre bloques: "+" que abre la paleta. */
-function InsertPoint({
-  index, inserting, setInserting, insertBlock,
-}: {
-  index: number
-  inserting: number | null
-  setInserting: (i: number | null) => void
-  insertBlock: (type: EmailBlockType, index: number) => void
-}) {
-  if (inserting === index) {
-    return (
-      <div className="mx-8 my-1 rounded-lg border border-primary/40 bg-slate-50 p-2 grid grid-cols-4 gap-1">
-        {PALETTE.map((p) => {
-          const Icon = p.icon
-          return (
-            <button
-              key={p.type}
-              onClick={() => insertBlock(p.type, index)}
-              className="flex flex-col items-center gap-1 rounded-md px-1 py-2 text-[11px] text-slate-600 hover:bg-white hover:text-primary transition-colors"
-            >
-              <Icon size={15} />
-              {p.label}
-            </button>
-          )
-        })}
-        <button
-          onClick={() => setInserting(null)}
-          className="flex flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-[11px] text-slate-400 hover:bg-white"
-        >
-          Cancelar
-        </button>
-      </div>
-    )
-  }
-  return (
-    <div className="relative h-0 group/insert">
-      <button
-        onClick={(e) => { e.stopPropagation(); setInserting(index) }}
-        className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 rounded-full bg-white border border-slate-300 text-slate-400 p-0.5 opacity-0 group-hover/insert:opacity-100 hover:text-primary hover:border-primary transition-opacity"
-        title="Añadir bloque"
-      >
-        <Plus size={14} />
-      </button>
     </div>
   )
 }

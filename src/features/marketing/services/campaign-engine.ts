@@ -1,6 +1,7 @@
 import { query, queryOne } from '@/lib/db'
 import { getResend, EMAIL_FROM } from '@/lib/email/client'
 import { applyMergeTags, renderEmailHtml } from './render'
+import { migrateDesign } from './design'
 import type { CampaignAudience, CampaignRecipient, Contact, EmailCampaign } from '@/types/database'
 
 /** WHERE de la audiencia: contactos con email, no dados de baja, y (opcional) con alguna de las etiquetas. */
@@ -129,10 +130,11 @@ export async function processCampaignBatch(
       email: contact.email,
     }
     const html = renderEmailHtml({
-      blocks: campaign.design,
+      design: migrateDesign(campaign.design),
       merge,
       unsubscribeUrl: `${base}/unsubscribe/${contact.unsubscribe_token}`,
       rewriteUrl: (url) => `${base}/r/${recipient.click_token}?u=${encodeURIComponent(url)}`,
+      viewInBrowserUrl: `${base}/e/${recipient.click_token}`,
     })
     const subject = applyMergeTags(campaign.subject, merge)
 
