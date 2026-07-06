@@ -15,9 +15,9 @@ export default async function AutomationsPage() {
 
       <div className={`${ui.card} p-4 text-sm text-muted`}>
         <p>
-          <strong className="text-fg">Cómo funciona:</strong> creas un formulario, lo vinculas a una
-          secuencia de emails, y cuando alguien lo rellena se da de alta como contacto y empieza a
-          recibir la secuencia automáticamente.
+          <strong className="text-fg">Cómo funciona:</strong> creas un flujo de trabajo y eliges
+          cuándo empieza (formulario enviado, cita reservada o etiqueta añadida). El contacto
+          recorre los pasos: emails, esperas, etiquetas y ramas según haga click o no.
         </p>
       </div>
 
@@ -41,7 +41,10 @@ export default async function AutomationsPage() {
                     {a.status === 'active' ? 'Activa' : 'Borrador'}
                   </span>
                 </div>
-                <p className="text-sm text-muted mt-2 inline-flex items-center gap-1.5"><Mail size={14} /> {a.stepCount} emails</p>
+                <p className="text-sm text-muted mt-2 inline-flex items-center gap-1.5">
+                  <Mail size={14} /> {a.nodeCount} pasos
+                  {a.activeEnrollments > 0 && <span>· {a.activeEnrollments} en curso</span>}
+                </p>
               </Link>
             ))}
           </div>

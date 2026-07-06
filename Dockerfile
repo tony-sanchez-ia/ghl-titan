@@ -1,4 +1,4 @@
-# GHL Titan — Dockerfile para VPS (EasyPanel / Docker). Stack: Next.js 16 + Supabase.
+# GHL Titan — Dockerfile para VPS (EasyPanel / Docker). Stack: Next.js 16 + Neon (Postgres).
 # Build standalone (output: 'standalone' en next.config.ts) → node server.js. Sin Prisma ni volúmenes.
 
 FROM node:22-alpine AS base
@@ -13,11 +13,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # IMPORTANTE: las NEXT_PUBLIC_* se INCRUSTAN en el build. Deben llegar como build args.
-ARG NEXT_PUBLIC_SUPABASE_URL
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG NEXT_PUBLIC_SITE_URL
-ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 RUN npm run build
 

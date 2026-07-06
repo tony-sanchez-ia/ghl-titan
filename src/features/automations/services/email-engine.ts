@@ -1,13 +1,28 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { getResend, EMAIL_FROM } from '@/lib/email/client'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { query } from '@/lib/db'
+import type { ScheduledEmail } from '@/types/database'
 
-/** Envoltorio HTML para los emails de automatización. */
-function shell(subject: string, bodyText: string): string {
+const URL_REGEX = /https?:\/\/[^\s<>"']+/g
+
+/** Extrae las URLs del cuerpo en texto plano (para validar redirects de tracking). */
+export function extractUrls(bodyText: string): string[] {
+  return bodyText.match(URL_REGEX) ?? []
+}
+
+/**
+ * Envoltorio HTML para los emails de automatización. Si hay `clickToken`,
+ * las URLs del cuerpo se convierten en links que pasan por /r/[token] (tracking).
+ */
+function shell(subject: string, bodyText: string, clickToken?: string | null): string {
+  const base = (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '')
   const safe = bodyText
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+    .replace(URL_REGEX, (url) => {
+      const href = clickToken && base ? `${base}/r/${clickToken}?u=${encodeURIComponent(url)}` : url
+      return `<a href="${href}" style="color:#2563eb">${url}</a>`
+    })
     .replace(/\n/g, '<br>')
   return `<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0f172a">
     <div style="max-width:520px;margin:0 auto;padding:32px 16px">
@@ -20,89 +35,35 @@ function shell(subject: string, bodyText: string): string {
   </body></html>`
 }
 
-/** ms equivalentes a un delay (days|hours). */
-function delayMs(value: number, unit: string): number {
-  const factor = unit === 'hours' ? 3600_000 : 86_400_000
-  return value * factor
-}
-
-type Admin = SupabaseClient
-
-/**
- * Inscribe un contacto en una automatización ACTIVA: crea una scheduled_email
- * por paso con send_at = ahora + delay acumulado. No envía aquí (lo hace processDueEmails).
- */
-export async function enrollContactInAutomation(
-  admin: Admin,
-  automationId: string,
-  contactId: string,
-  toEmail: string
-): Promise<number> {
-  const { data: automation } = await admin
-    .from('automations')
-    .select('id, status')
-    .eq('id', automationId)
-    .eq('status', 'active')
-    .maybeSingle()
-  if (!automation) return 0
-
-  const { data: steps } = await admin
-    .from('automation_steps')
-    .select('*')
-    .eq('automation_id', automationId)
-    .order('position')
-  if (!steps || steps.length === 0) return 0
-
-  let cumulative = 0
-  const now = Date.now()
-  const rows = steps.map((s) => {
-    cumulative += delayMs(s.delay_value, s.delay_unit)
-    return {
-      automation_id: automationId,
-      step_id: s.id,
-      contact_id: contactId,
-      to_email: toEmail,
-      subject: s.subject,
-      body: s.body,
-      send_at: new Date(now + cumulative).toISOString(),
-    }
-  })
-
-  const { error } = await admin.from('scheduled_emails').insert(rows)
-  if (error) return 0
-  return rows.length
-}
-
 /**
  * Envía los scheduled_emails vencidos y pendientes. Marca sent/failed.
  * Idempotente: solo procesa status='pending' con send_at<=now.
  * Devuelve { processed, sent, failed }.
  */
-export async function processDueEmails(
-  client?: Admin
-): Promise<{ processed: number; sent: number; failed: number }> {
-  const admin = client ?? createAdminClient()
+export async function processDueEmails(): Promise<{
+  processed: number
+  sent: number
+  failed: number
+}> {
   const resend = getResend()
 
-  const { data: due } = await admin
-    .from('scheduled_emails')
-    .select('*')
-    .eq('status', 'pending')
-    .lte('send_at', new Date().toISOString())
-    .order('send_at')
-    .limit(100)
+  const due = await query<ScheduledEmail>(
+    `select * from scheduled_emails
+     where status = 'pending' and send_at <= now()
+     order by send_at limit 100`
+  )
 
-  if (!due || due.length === 0) return { processed: 0, sent: 0, failed: 0 }
+  if (due.length === 0) return { processed: 0, sent: 0, failed: 0 }
 
   let sent = 0
   let failed = 0
 
   for (const email of due) {
     if (!resend) {
-      await admin
-        .from('scheduled_emails')
-        .update({ status: 'failed', error: 'RESEND_API_KEY no configurada' })
-        .eq('id', email.id)
+      await query(
+        `update scheduled_emails set status = 'failed', error = 'RESEND_API_KEY no configurada' where id = $1`,
+        [email.id]
+      )
       failed++
       continue
     }
@@ -111,25 +72,24 @@ export async function processDueEmails(
         from: EMAIL_FROM,
         to: email.to_email,
         subject: email.subject,
-        html: shell(email.subject, email.body),
+        html: shell(email.subject, email.body, email.click_token),
       })
       if (res.error) throw new Error(res.error.message)
-      await admin
-        .from('scheduled_emails')
-        .update({ status: 'sent', sent_at: new Date().toISOString(), error: null })
-        .eq('id', email.id)
-      await admin.from('contact_activities').insert({
-        contact_id: email.contact_id,
-        type: 'email_sent',
-        description: `Email de secuencia: ${email.subject}`,
-        metadata: { scheduled_email_id: email.id },
-      })
+      await query(
+        `update scheduled_emails set status = 'sent', sent_at = now(), error = null where id = $1`,
+        [email.id]
+      )
+      await query(
+        `insert into contact_activities (contact_id, type, description, metadata)
+         values ($1, 'email_sent', $2, $3)`,
+        [email.contact_id, `Email de secuencia: ${email.subject}`, { scheduled_email_id: email.id }]
+      )
       sent++
     } catch (e) {
-      await admin
-        .from('scheduled_emails')
-        .update({ status: 'failed', error: (e as Error).message.slice(0, 500) })
-        .eq('id', email.id)
+      await query(
+        `update scheduled_emails set status = 'failed', error = $1 where id = $2`,
+        [(e as Error).message.slice(0, 500), email.id]
+      )
       failed++
     }
   }

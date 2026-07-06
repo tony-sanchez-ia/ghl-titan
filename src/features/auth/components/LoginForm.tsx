@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { login } from '@/actions/auth'
 import { ui } from '@/shared/lib/ui'
 
@@ -60,12 +59,6 @@ export function LoginForm() {
       >
         {loading ? 'Entrando...' : 'Entrar'}
       </button>
-
-      <p className="text-center text-sm text-muted">
-        <Link href="/forgot-password" className="hover:text-fg transition-colors">
-          ¿Olvidaste tu contraseña?
-        </Link>
-      </p>
     </form>
   )
 }

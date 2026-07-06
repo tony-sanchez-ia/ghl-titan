@@ -1,12 +1,14 @@
-import { Download, CalendarPlus, Mail, StickyNote, FileInput, Zap, Circle } from 'lucide-react'
+import { Download, CalendarPlus, Mail, StickyNote, FileInput, Zap, Circle, MousePointerClick, Tag } from 'lucide-react'
 import type { ContactActivity, ContactActivityType } from '../types'
 
 const ICONS: Record<ContactActivityType, typeof Circle> = {
   imported: Download,
   booking_created: CalendarPlus,
   email_sent: Mail,
+  email_clicked: MousePointerClick,
   form_submitted: FileInput,
   enrolled: Zap,
+  tag_added: Tag,
   note: StickyNote,
 }
 

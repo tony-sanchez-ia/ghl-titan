@@ -2,14 +2,10 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import {
-  enrollContactInAutomation,
-  processDueEmails,
-} from '@/features/automations/services/email-engine'
-import { getActiveAutomationForForm } from '@/features/automations/services/queries'
-import type { AutomationStatus, DelayUnit } from '@/types/database'
+import { query, queryOne } from '@/lib/db'
+import { processDueEmails } from '@/features/automations/services/email-engine'
+import { fireTrigger } from '@/features/automations/services/engine'
+import type { AutomationStatus, NodeBranch, NodeType, TriggerType } from '@/types/database'
 
 function slugify(s: string): string {
   return s
@@ -19,6 +15,10 @@ function slugify(s: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60)
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return (err as { code?: string })?.code === '23505'
 }
 
 // ─── Formularios ─────────────────────────────────────────────────────────────
@@ -36,18 +36,17 @@ export async function createForm(formData: FormData) {
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }
   const d = parsed.data
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('forms')
-    .insert({ name: d.name, slug: d.slug ? slugify(d.slug) : slugify(d.name), description: d.description || null })
-    .select('id')
-    .single()
-  if (error) {
-    if (error.code === '23505') return { error: 'Ya existe un formulario con ese enlace (slug)' }
-    return { error: error.message }
+  try {
+    const data = await queryOne<{ id: string }>(
+      'insert into forms (name, slug, description) values ($1, $2, $3) returning id',
+      [d.name, d.slug ? slugify(d.slug) : slugify(d.name), d.description || null]
+    )
+    revalidatePath('/automations')
+    return { success: true, id: data!.id }
+  } catch (err) {
+    if (isUniqueViolation(err)) return { error: 'Ya existe un formulario con ese enlace (slug)' }
+    return { error: (err as Error).message }
   }
-  revalidatePath('/automations')
-  return { success: true, id: data.id }
 }
 
 export async function updateForm(id: string, formData: FormData) {
@@ -58,27 +57,23 @@ export async function updateForm(id: string, formData: FormData) {
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }
   const d = parsed.data
-  const supabase = await createClient()
-  const update: Record<string, unknown> = {
-    name: d.name,
-    description: d.description || null,
-    updated_at: new Date().toISOString(),
-  }
-  if (d.slug) update.slug = slugify(d.slug)
-  const { error } = await supabase.from('forms').update(update).eq('id', id)
-  if (error) {
-    if (error.code === '23505') return { error: 'Ya existe un formulario con ese enlace (slug)' }
-    return { error: error.message }
+  try {
+    await query(
+      `update forms set name = $1, description = $2, slug = coalesce($3, slug), updated_at = now()
+       where id = $4`,
+      [d.name, d.description || null, d.slug ? slugify(d.slug) : null, id]
+    )
+  } catch (err) {
+    if (isUniqueViolation(err)) return { error: 'Ya existe un formulario con ese enlace (slug)' }
+    return { error: (err as Error).message }
   }
   revalidatePath('/automations')
   revalidatePath(`/automations/forms/${id}`)
   return { success: true }
 }
 
-export async function deleteForm(id: string) {
-  const supabase = await createClient()
-  const { error } = await supabase.from('forms').delete().eq('id', id)
-  if (error) return { error: error.message }
+export async function deleteForm(id: string): Promise<{ success?: boolean; error?: string }> {
+  await query('delete from forms where id = $1', [id])
   revalidatePath('/automations')
   return { success: true }
 }
@@ -87,107 +82,149 @@ export async function deleteForm(id: string) {
 export async function createAutomation(formData: FormData) {
   const name = (formData.get('name') as string)?.trim()
   if (!name) return { error: 'El nombre es obligatorio' }
-  const supabase = await createClient()
-  const { data, error } = await supabase.from('automations').insert({ name }).select('id').single()
-  if (error) return { error: error.message }
+  const data = await queryOne<{ id: string }>(
+    'insert into automations (name) values ($1) returning id',
+    [name]
+  )
   revalidatePath('/automations')
-  return { success: true, id: data.id }
+  return { success: true, id: data!.id }
 }
 
-export async function renameAutomation(id: string, name: string) {
-  const supabase = await createClient()
-  const { error } = await supabase
-    .from('automations')
-    .update({ name, updated_at: new Date().toISOString() })
-    .eq('id', id)
-  if (error) return { error: error.message }
+export async function renameAutomation(id: string, name: string): Promise<{ success?: boolean; error?: string }> {
+  await query('update automations set name = $1, updated_at = now() where id = $2', [name, id])
   revalidatePath(`/automations/${id}`)
   return { success: true }
 }
 
-export async function setAutomationStatus(id: string, status: AutomationStatus) {
-  const supabase = await createClient()
-  const { error } = await supabase
-    .from('automations')
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq('id', id)
-  if (error) return { error: error.message }
+export async function setAutomationStatus(id: string, status: AutomationStatus): Promise<{ success?: boolean; error?: string }> {
+  await query('update automations set status = $1, updated_at = now() where id = $2', [status, id])
   revalidatePath('/automations')
   revalidatePath(`/automations/${id}`)
   return { success: true }
 }
 
-export async function deleteAutomation(id: string) {
-  const supabase = await createClient()
-  const { error } = await supabase.from('automations').delete().eq('id', id)
-  if (error) return { error: error.message }
+export async function deleteAutomation(id: string): Promise<{ success?: boolean; error?: string }> {
+  await query('delete from automations where id = $1', [id])
   revalidatePath('/automations')
   return { success: true }
 }
 
-export async function setAutomationTriggers(automationId: string, formIds: string[]) {
-  const supabase = await createClient()
-  await supabase.from('automation_triggers').delete().eq('automation_id', automationId)
-  if (formIds.length > 0) {
-    const { error } = await supabase
-      .from('automation_triggers')
-      .insert(formIds.map((form_id) => ({ automation_id: automationId, form_id })))
-    if (error) return { error: error.message }
+// ─── Disparadores (triggers tipados) ─────────────────────────────────────────
+const triggerSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('form_submitted'), form_id: z.string().uuid() }),
+  z.object({ type: z.literal('booking_created'), calendar_id: z.string().uuid().nullable() }),
+  z.object({ type: z.literal('tag_added'), tag: z.string().trim().min(1, 'Escribe la etiqueta').max(60) }),
+])
+
+export async function addTrigger(
+  automationId: string,
+  input: { type: TriggerType; form_id?: string; calendar_id?: string | null; tag?: string }
+): Promise<{ success?: boolean; error?: string }> {
+  const parsed = triggerSchema.safeParse(input)
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Disparador inválido' }
+  const { type, ...config } = parsed.data
+  await query(
+    'insert into automation_trigger_defs (automation_id, type, config) values ($1, $2, $3)',
+    [automationId, type, config]
+  )
+  revalidatePath(`/automations/${automationId}`)
+  return { success: true }
+}
+
+export async function deleteTrigger(id: string, automationId: string): Promise<{ success?: boolean; error?: string }> {
+  await query('delete from automation_trigger_defs where id = $1', [id])
+  revalidatePath(`/automations/${automationId}`)
+  return { success: true }
+}
+
+// ─── Nodos del workflow ───────────────────────────────────────────────────────
+const DEFAULT_CONFIG: Record<NodeType, Record<string, unknown>> = {
+  send_email: { subject: 'Asunto del email', body: 'Escribe aquí tu mensaje.' },
+  wait: { delay_value: 1, delay_unit: 'days' },
+  add_tag: { tag: '' },
+  add_note: { note: '' },
+  branch_email_click: { wait_value: 2, wait_unit: 'days' },
+}
+
+/**
+ * Inserta un nodo en una cadena (raíz o rama). `afterNodeId = null` → al principio
+ * de la cadena; si no, justo después de ese nodo (desplazando a los siguientes).
+ */
+export async function addNode(
+  automationId: string,
+  input: {
+    type: NodeType
+    parentNodeId: string | null
+    branch: NodeBranch | null
+    afterNodeId: string | null
   }
+): Promise<{ success?: boolean; error?: string; id?: string }> {
+  if (!(input.type in DEFAULT_CONFIG)) return { error: 'Tipo de paso inválido' }
+
+  let position = 0
+  if (input.afterNodeId) {
+    const after = await queryOne<{ position: number }>(
+      'select position from automation_nodes where id = $1',
+      [input.afterNodeId]
+    )
+    if (!after) return { error: 'Paso de referencia no encontrado' }
+    position = after.position + 1
+  }
+
+  // Hace hueco desplazando los hermanos posteriores
+  await query(
+    `update automation_nodes set position = position + 1
+     where automation_id = $1 and parent_node_id is not distinct from $2
+       and branch is not distinct from $3 and position >= $4`,
+    [automationId, input.parentNodeId, input.branch, position]
+  )
+
+  const node = await queryOne<{ id: string }>(
+    `insert into automation_nodes (automation_id, parent_node_id, branch, position, type, config)
+     values ($1, $2, $3, $4, $5, $6) returning id`,
+    [automationId, input.parentNodeId, input.branch, position, input.type, DEFAULT_CONFIG[input.type]]
+  )
+
   revalidatePath(`/automations/${automationId}`)
-  return { success: true }
+  return { success: true, id: node!.id }
 }
 
-// ─── Pasos ────────────────────────────────────────────────────────────────────
-export async function addStep(automationId: string) {
-  const supabase = await createClient()
-  const { count } = await supabase
-    .from('automation_steps')
-    .select('*', { count: 'exact', head: true })
-    .eq('automation_id', automationId)
-  const { error } = await supabase.from('automation_steps').insert({
-    automation_id: automationId,
-    position: count ?? 0,
-    delay_value: count === 0 ? 0 : 2,
-    delay_unit: 'days',
-    subject: 'Asunto del email',
-    body: 'Escribe aquí tu mensaje.',
-  })
-  if (error) return { error: error.message }
-  revalidatePath(`/automations/${automationId}`)
-  return { success: true }
-}
-
-const stepPatch = z.object({
-  delay_value: z.coerce.number().int().min(0).max(365).optional(),
-  delay_unit: z.enum(['days', 'hours']).optional(),
+const nodeConfigSchema = z.object({
   subject: z.string().trim().max(300).optional(),
   body: z.string().trim().max(8000).optional(),
+  delay_value: z.coerce.number().int().min(0).max(365).optional(),
+  delay_unit: z.enum(['days', 'hours']).optional(),
+  tag: z.string().trim().max(60).optional(),
+  note: z.string().trim().max(2000).optional(),
+  wait_value: z.coerce.number().int().min(1).max(365).optional(),
+  wait_unit: z.enum(['days', 'hours']).optional(),
 })
 
-export async function updateStep(
+export async function updateNode(
   id: string,
   automationId: string,
-  patch: { delay_value?: number; delay_unit?: DelayUnit; subject?: string; body?: string }
-) {
-  const parsed = stepPatch.safeParse(patch)
+  config: Record<string, unknown>
+): Promise<{ success?: boolean; error?: string }> {
+  const parsed = nodeConfigSchema.safeParse(config)
   if (!parsed.success) return { error: 'Datos inválidos' }
-  const supabase = await createClient()
-  const { error } = await supabase.from('automation_steps').update(parsed.data).eq('id', id)
-  if (error) return { error: error.message }
+
+  await query(
+    `update automation_nodes set config = config || $1 where id = $2`,
+    [JSON.stringify(parsed.data), id]
+  )
   revalidatePath(`/automations/${automationId}`)
   return { success: true }
 }
 
-export async function deleteStep(id: string, automationId: string) {
-  const supabase = await createClient()
-  const { error } = await supabase.from('automation_steps').delete().eq('id', id)
-  if (error) return { error: error.message }
+export async function deleteNode(id: string, automationId: string): Promise<{ success?: boolean; error?: string }> {
+  // Las subcadenas de rama caen en cascada (FK). Inscripciones apuntando aquí →
+  // current_node_id queda null y el motor las completa sin error.
+  await query('delete from automation_nodes where id = $1', [id])
   revalidatePath(`/automations/${automationId}`)
   return { success: true }
 }
 
-// ─── Envío público del formulario (service-role) ─────────────────────────────
+// ─── Envío público del formulario ─────────────────────────────────────────────
 const submitSchema = z.object({
   slug: z.string().min(1),
   name: z.string().trim().min(1, 'El nombre es obligatorio').max(160),
@@ -207,67 +244,49 @@ export async function submitPublicForm(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }
   const { slug, name, email, phone, message } = parsed.data
 
-  const admin = createAdminClient()
-  const { data: form } = await admin.from('forms').select('id, name').eq('slug', slug).single()
+  const form = await queryOne<{ id: string; name: string }>(
+    'select id, name from forms where slug = $1',
+    [slug]
+  )
   if (!form) return { error: 'Formulario no encontrado' }
 
   // Dedup contacto por email (patrón createPublicBooking)
   let contactId: string | null = null
-  const { data: found } = await admin
-    .from('contacts')
-    .select('id')
-    .ilike('email', email)
-    .limit(1)
-    .maybeSingle()
+  const found = await queryOne<{ id: string }>(
+    'select id from contacts where email ilike $1 limit 1',
+    [email]
+  )
   if (found) {
     contactId = found.id
-    await admin
-      .from('contacts')
-      .update({ last_activity_at: new Date().toISOString(), phone: phone || undefined })
-      .eq('id', contactId)
+    await query(
+      'update contacts set last_activity_at = now(), phone = coalesce($1, phone) where id = $2',
+      [phone || null, contactId]
+    )
   } else {
     const [firstName, ...rest] = name.trim().split(' ')
-    const { data: nc } = await admin
-      .from('contacts')
-      .insert({
-        first_name: firstName,
-        last_name: rest.join(' ') || null,
-        email,
-        phone: phone || null,
-        source: 'form',
-        last_activity_at: new Date().toISOString(),
-      })
-      .select('id')
-      .single()
+    const nc = await queryOne<{ id: string }>(
+      `insert into contacts (first_name, last_name, email, phone, source, last_activity_at)
+       values ($1, $2, $3, $4, 'form', now()) returning id`,
+      [firstName, rest.join(' ') || null, email, phone || null]
+    )
     contactId = nc?.id ?? null
   }
 
   if (contactId) {
-    await admin.from('contact_activities').insert({
-      contact_id: contactId,
-      type: 'form_submitted',
-      description: `Formulario: ${form.name}`,
-      metadata: message ? { message } : {},
-    })
+    await query(
+      `insert into contact_activities (contact_id, type, description, metadata)
+       values ($1, 'form_submitted', $2, $3)`,
+      [contactId, `Formulario: ${form.name}`, message ? { message } : {}]
+    )
   }
 
-  // Inscribe en la automatización activa vinculada (si la hay)
-  const automationId = await getActiveAutomationForForm(form.id)
-  if (automationId && contactId) {
-    const n = await enrollContactInAutomation(admin, automationId, contactId, email)
-    if (n > 0) {
-      await admin.from('contact_activities').insert({
-        contact_id: contactId,
-        type: 'enrolled',
-        description: 'Inscrito en secuencia de emails',
-        metadata: { automation_id: automationId },
-      })
-      // Envía los pasos de día 0 al instante (no bloquea si falla)
-      try {
-        await processDueEmails(admin)
-      } catch {
-        /* el contacto ya está guardado; no romper la respuesta */
-      }
+  // Dispara los workflows con trigger "formulario enviado" (no bloquea si falla)
+  if (contactId) {
+    try {
+      await fireTrigger('form_submitted', { formId: form.id }, contactId, email)
+      await processDueEmails() // envía los emails inmediatos al instante
+    } catch {
+      /* el contacto ya está guardado; no romper la respuesta */
     }
   }
 

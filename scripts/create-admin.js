@@ -1,12 +1,12 @@
-// Crea un usuario admin ya confirmado usando la service_role key.
+// Crea (o resetea la contraseña de) el usuario admin en Neon.
 // Uso: node scripts/create-admin.js <email> <password>
 const fs = require('fs')
 const path = require('path')
-const { createClient } = require('@supabase/supabase-js')
+const { Client } = require('pg')
+const bcrypt = require('bcryptjs')
 
 const envFile = fs.readFileSync(path.join(__dirname, '..', '.env.local'), 'utf8')
-const url = envFile.match(/^NEXT_PUBLIC_SUPABASE_URL=(.+)$/m)?.[1]
-const serviceKey = envFile.match(/^SUPABASE_SERVICE_ROLE_KEY=(.+)$/m)?.[1]
+const dbUrl = envFile.match(/^DATABASE_URL=(.+)$/m)?.[1]
 
 const [email, password] = process.argv.slice(2)
 if (!email || !password) {
@@ -14,16 +14,21 @@ if (!email || !password) {
   process.exit(1)
 }
 
-const supabase = createClient(url, serviceKey, {
-  auth: { autoRefreshToken: false, persistSession: false },
-})
+async function main() {
+  const client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } })
+  await client.connect()
+  const hash = await bcrypt.hash(password, 10)
+  const res = await client.query(
+    `insert into users (email, password_hash) values ($1, $2)
+     on conflict (email) do update set password_hash = excluded.password_hash, updated_at = now()
+     returning email`,
+    [email.toLowerCase(), hash]
+  )
+  console.log('OK: admin creado/actualizado →', res.rows[0].email)
+  await client.end()
+}
 
-supabase.auth.admin
-  .createUser({ email, password, email_confirm: true })
-  .then(({ data, error }) => {
-    if (error) {
-      console.error('ERROR:', error.message)
-      process.exit(1)
-    }
-    console.log('OK: admin creado y confirmado →', data.user.email)
-  })
+main().catch((err) => {
+  console.error('ERROR:', err.message)
+  process.exit(1)
+})

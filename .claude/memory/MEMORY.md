@@ -14,6 +14,18 @@
   propia. Estado a 2026-06-13: CRM (189 contactos + vista 360), Agenda (reservas públicas con calendario mensual +
   gestión cancelar/reprogramar), Cursos (Kajabi-style + certificado), Automatizaciones (form→drip), Emails (Resend),
   Ajustes + modo noche. 5 PRPs completados. Repo en GitHub. Deploy preparado (Docker/EasyPanel), pendiente VPS+dominio.
+- `neon-migration.md` — 2026-07-01: MIGRADO de Supabase a Neon (Supabase pausó el proyecto free y Tony quiso irse).
+  BD en Neon (pg directo), auth propia (bcrypt + JWT cookie, AUTH_SECRET), sin RLS. Todo verificado E2E. Ver detalle.
+- PRP-006 COMPLETADO (2026-07-01): automatizaciones VISUALES tipo GHL — builder vertical, triggers
+  form/reserva/etiqueta, pasos tipados, ramas por click con tracking /r/[token]. Detalle en neon-migration.md y el PRP.
+- PRP-007 COMPLETADO (2026-07-05): EMAIL MARKETING tipo GHL — sección /marketing (Estadísticas/Campañas/
+  Plantillas), diseñador visual por bloques (una columna, sin librerías), campañas a todos/por etiquetas
+  (ahora o programadas), cola idempotente por lotes (claim atómico, 25/cron + 10 inline), tracking de
+  clicks vía /r/[token] (tokens de campaign_recipients), baja RGPD /unsubscribe/[token] (confirmación
+  por botón anti-prefetch) y embudo de estadísticas. Tablas: email_campaigns, campaign_recipients,
+  email_templates + unsubscribed_at/unsubscribe_token en contacts (migración 0003). Verificado E2E real.
+  GOTCHAS nuevos en el PRP: pgcrypto para gen_random_bytes; rutas nuevas de (main) hay que añadirlas
+  al proxy.ts; bg-primary/40 no funciona (colores var() sin alpha-value) → opacity inline.
 
 ## feedback/ — Correcciones y preferencias
 - Diseño: rechazó el violeta eléctrico "techno" (Liquid Glass). Quiere interfaz CLÁSICA, clara, blancos, azul de acento,

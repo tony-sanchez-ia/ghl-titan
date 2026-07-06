@@ -2,10 +2,11 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { query, queryOne } from '@/lib/db'
 import { generateSlots } from '@/features/scheduling/services/availability'
 import { sendBookingEmails } from '@/features/notifications/services/booking-emails'
+import { fireTrigger } from '@/features/automations/services/engine'
+import { processDueEmails } from '@/features/automations/services/email-engine'
 import type { Calendar, CalendarAvailability } from '@/types/database'
 
 function slugify(s: string): string {
@@ -16,6 +17,10 @@ function slugify(s: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60)
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return (err as { code?: string })?.code === '23505'
 }
 
 const calendarSchema = z.object({
@@ -52,33 +57,32 @@ export async function createCalendar(formData: FormData) {
     return { error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }
   }
   const d = parsed.data
-  const supabase = await createClient()
   const slug = d.slug ? slugify(d.slug) : slugify(d.name)
 
-  const { data, error } = await supabase
-    .from('calendars')
-    .insert({
-      name: d.name,
-      slug,
-      description: d.description || null,
-      duration_min: d.duration_min,
-      min_notice_hours: d.min_notice_hours,
-      window_days: d.window_days,
-      buffer_before_min: d.buffer_before_min,
-      buffer_after_min: d.buffer_after_min,
-      location_type: d.location_type,
-      location_value: d.location_value || null,
-    })
-    .select('id')
-    .single()
-
-  if (error) {
-    if (error.code === '23505') return { error: 'Ya existe un calendario con ese enlace (slug)' }
-    return { error: error.message }
+  try {
+    const data = await queryOne<{ id: string }>(
+      `insert into calendars (name, slug, description, duration_min, min_notice_hours, window_days,
+         buffer_before_min, buffer_after_min, location_type, location_value)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
+      [
+        d.name,
+        slug,
+        d.description || null,
+        d.duration_min,
+        d.min_notice_hours,
+        d.window_days,
+        d.buffer_before_min,
+        d.buffer_after_min,
+        d.location_type,
+        d.location_value || null,
+      ]
+    )
+    revalidatePath('/calendars')
+    return { success: true, id: data!.id }
+  } catch (err) {
+    if (isUniqueViolation(err)) return { error: 'Ya existe un calendario con ese enlace (slug)' }
+    return { error: (err as Error).message }
   }
-
-  revalidatePath('/calendars')
-  return { success: true, id: data.id }
 }
 
 export async function updateCalendar(id: string, formData: FormData) {
@@ -87,25 +91,30 @@ export async function updateCalendar(id: string, formData: FormData) {
     return { error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }
   }
   const d = parsed.data
-  const supabase = await createClient()
-  const update: Partial<Calendar> = {
-    name: d.name,
-    description: d.description || null,
-    duration_min: d.duration_min,
-    min_notice_hours: d.min_notice_hours,
-    window_days: d.window_days,
-    buffer_before_min: d.buffer_before_min,
-    buffer_after_min: d.buffer_after_min,
-    location_type: d.location_type,
-    location_value: d.location_value || null,
-    updated_at: new Date().toISOString(),
-  }
-  if (d.slug) update.slug = slugify(d.slug)
 
-  const { error } = await supabase.from('calendars').update(update).eq('id', id)
-  if (error) {
-    if (error.code === '23505') return { error: 'Ya existe un calendario con ese enlace (slug)' }
-    return { error: error.message }
+  try {
+    await query(
+      `update calendars set name = $1, description = $2, duration_min = $3, min_notice_hours = $4,
+         window_days = $5, buffer_before_min = $6, buffer_after_min = $7, location_type = $8,
+         location_value = $9, slug = coalesce($10, slug), updated_at = now()
+       where id = $11`,
+      [
+        d.name,
+        d.description || null,
+        d.duration_min,
+        d.min_notice_hours,
+        d.window_days,
+        d.buffer_before_min,
+        d.buffer_after_min,
+        d.location_type,
+        d.location_value || null,
+        d.slug ? slugify(d.slug) : null,
+        id,
+      ]
+    )
+  } catch (err) {
+    if (isUniqueViolation(err)) return { error: 'Ya existe un calendario con ese enlace (slug)' }
+    return { error: (err as Error).message }
   }
 
   revalidatePath('/calendars')
@@ -113,10 +122,8 @@ export async function updateCalendar(id: string, formData: FormData) {
   return { success: true }
 }
 
-export async function deleteCalendar(id: string) {
-  const supabase = await createClient()
-  const { error } = await supabase.from('calendars').delete().eq('id', id)
-  if (error) return { error: error.message }
+export async function deleteCalendar(id: string): Promise<{ success?: boolean; error?: string }> {
+  await query('delete from calendars where id = $1', [id])
   revalidatePath('/calendars')
   return { success: true }
 }
@@ -142,19 +149,14 @@ export async function setAvailability(
     }
   }
 
-  const supabase = await createClient()
-  await supabase.from('calendar_availability').delete().eq('calendar_id', calendarId)
+  await query('delete from calendar_availability where calendar_id = $1', [calendarId])
 
-  if (parsed.data.length > 0) {
-    const { error } = await supabase.from('calendar_availability').insert(
-      parsed.data.map((r) => ({
-        calendar_id: calendarId,
-        weekday: r.weekday,
-        start_time: `${r.start_time}:00`,
-        end_time: `${r.end_time}:00`,
-      }))
+  for (const r of parsed.data) {
+    await query(
+      `insert into calendar_availability (calendar_id, weekday, start_time, end_time)
+       values ($1, $2, $3, $4)`,
+      [calendarId, r.weekday, `${r.start_time}:00`, `${r.end_time}:00`]
     )
-    if (error) return { error: error.message }
   }
 
   revalidatePath(`/calendars/${calendarId}`)
@@ -170,7 +172,7 @@ const bookingSchema = z.object({
   notes: z.string().trim().max(1000).optional().nullable(),
 })
 
-/** [público] Crea una reserva. Usa service-role (no hay sesión). */
+/** [público] Crea una reserva (sin sesión; el acceso es server-side). */
 export async function createPublicBooking(formData: FormData) {
   const parsed = bookingSchema.safeParse({
     slug: formData.get('slug'),
@@ -185,32 +187,26 @@ export async function createPublicBooking(formData: FormData) {
   }
   const { slug, slotIso, name, email, phone, notes } = parsed.data
 
-  const admin = createAdminClient()
-
-  const { data: calendar } = await admin
-    .from('calendars')
-    .select('*')
-    .eq('slug', slug)
-    .eq('is_active', true)
-    .single()
+  const calendar = await queryOne<Calendar>(
+    'select * from calendars where slug = $1 and is_active',
+    [slug]
+  )
   if (!calendar) return { error: 'Calendario no encontrado' }
 
-  const [{ data: availability }, { data: existing }] = await Promise.all([
-    admin.from('calendar_availability').select('*').eq('calendar_id', calendar.id),
-    admin
-      .from('bookings')
-      .select('starts_at, ends_at')
-      .eq('calendar_id', calendar.id)
-      .eq('status', 'confirmed')
-      .gte('starts_at', new Date().toISOString()),
+  const [availability, existing] = await Promise.all([
+    query<CalendarAvailability>(
+      'select * from calendar_availability where calendar_id = $1',
+      [calendar.id]
+    ),
+    query<{ starts_at: string; ends_at: string }>(
+      `select starts_at, ends_at from bookings
+       where calendar_id = $1 and status = 'confirmed' and starts_at >= now()`,
+      [calendar.id]
+    ),
   ])
 
   // Revalida que el hueco siga siendo válido y libre.
-  const days = generateSlots(
-    calendar as Calendar,
-    (availability ?? []) as CalendarAvailability[],
-    existing ?? []
-  )
+  const days = generateSlots(calendar, availability, existing)
   const isValidSlot = days.some((d) => d.slots.some((s) => s.iso === slotIso))
   if (!isValidSlot) {
     return { error: 'Ese horario ya no está disponible. Elige otro, por favor.' }
@@ -221,70 +217,59 @@ export async function createPublicBooking(formData: FormData) {
 
   // Vincula o crea el contacto (dedup por email).
   let contactId: string | null = null
-  const { data: foundContact } = await admin
-    .from('contacts')
-    .select('id')
-    .ilike('email', email)
-    .limit(1)
-    .maybeSingle()
+  const foundContact = await queryOne<{ id: string }>(
+    'select id from contacts where email ilike $1 limit 1',
+    [email]
+  )
 
   if (foundContact) {
     contactId = foundContact.id
-    await admin
-      .from('contacts')
-      .update({ last_activity_at: new Date().toISOString() })
-      .eq('id', contactId)
+    await query('update contacts set last_activity_at = now() where id = $1', [contactId])
   } else {
     const [firstName, ...rest] = name.trim().split(' ')
-    const { data: newContact } = await admin
-      .from('contacts')
-      .insert({
-        first_name: firstName,
-        last_name: rest.join(' ') || null,
-        email,
-        phone: phone || null,
-        source: 'booking',
-        last_activity_at: new Date().toISOString(),
-      })
-      .select('id')
-      .single()
+    const newContact = await queryOne<{ id: string }>(
+      `insert into contacts (first_name, last_name, email, phone, source, last_activity_at)
+       values ($1, $2, $3, $4, 'booking', now()) returning id`,
+      [firstName, rest.join(' ') || null, email, phone || null]
+    )
     contactId = newContact?.id ?? null
   }
 
   // Crea la cita.
-  const { data: booking, error: bookingError } = await admin
-    .from('bookings')
-    .insert({
-      calendar_id: calendar.id,
-      contact_id: contactId,
-      name,
-      email,
-      phone: phone || null,
-      starts_at: startsAt.toISOString(),
-      ends_at: endsAt.toISOString(),
-      status: 'confirmed',
-      location_type: calendar.location_type,
-      location_value: calendar.location_value,
-      notes: notes || null,
-    })
-    .select('id')
-    .single()
-
-  if (bookingError) {
-    if (bookingError.code === '23505') {
+  let bookingId: string
+  try {
+    const booking = await queryOne<{ id: string }>(
+      `insert into bookings (calendar_id, contact_id, name, email, phone, starts_at, ends_at,
+         status, location_type, location_value, notes)
+       values ($1, $2, $3, $4, $5, $6, $7, 'confirmed', $8, $9, $10) returning id`,
+      [
+        calendar.id,
+        contactId,
+        name,
+        email,
+        phone || null,
+        startsAt.toISOString(),
+        endsAt.toISOString(),
+        calendar.location_type,
+        calendar.location_value,
+        notes || null,
+      ]
+    )
+    bookingId = booking!.id
+  } catch (err) {
+    if (isUniqueViolation(err)) {
       return { error: 'Ese horario acaba de ser reservado. Elige otro, por favor.' }
     }
-    return { error: bookingError.message }
+    return { error: (err as Error).message }
   }
 
   // Registra la actividad en el timeline del contacto.
   if (contactId) {
-    await admin.from('contact_activities').insert({
-      contact_id: contactId,
-      type: 'booking_created',
-      description: `Reserva: ${calendar.name}`,
-      metadata: { booking_id: booking.id, starts_at: startsAt.toISOString() },
-    })
+    await query(
+      `insert into contact_activities (contact_id, type, description, metadata)
+       values ($1, 'booking_created', $2, $3)`,
+      [contactId, `Reserva: ${calendar.name}`, { booking_id: bookingId, starts_at: startsAt.toISOString() }]
+    )
   }
 
   // Envía emails (no bloquea: si falla o no hay dominio verificado, la reserva ya está hecha).
@@ -302,12 +287,19 @@ export async function createPublicBooking(formData: FormData) {
   })
 
   if (contactId) {
-    await admin.from('contact_activities').insert({
-      contact_id: contactId,
-      type: 'email_sent',
-      description: 'Email de confirmación enviado',
-      metadata: {},
-    })
+    await query(
+      `insert into contact_activities (contact_id, type, description, metadata)
+       values ($1, 'email_sent', 'Email de confirmación enviado', '{}')`,
+      [contactId]
+    )
+
+    // Dispara los workflows con trigger "reserva creada" (no bloquea la reserva)
+    try {
+      await fireTrigger('booking_created', { calendarId: calendar.id }, contactId, email)
+      await processDueEmails()
+    } catch {
+      /* la reserva ya está hecha; no romper la respuesta */
+    }
   }
 
   revalidatePath('/calendars')
@@ -322,22 +314,18 @@ export async function createPublicBooking(formData: FormData) {
 
 // ─── Gestión de citas (admin) ────────────────────────────────────────────────
 export async function cancelBooking(id: string) {
-  const supabase = await createClient()
-  const { data: booking, error } = await supabase
-    .from('bookings')
-    .update({ status: 'cancelled' })
-    .eq('id', id)
-    .select('contact_id, name, starts_at')
-    .single()
-  if (error) return { error: error.message }
+  const booking = await queryOne<{ contact_id: string | null }>(
+    `update bookings set status = 'cancelled' where id = $1 returning contact_id`,
+    [id]
+  )
+  if (!booking) return { error: 'Cita no encontrada' }
 
-  if (booking?.contact_id) {
-    await supabase.from('contact_activities').insert({
-      contact_id: booking.contact_id,
-      type: 'note',
-      description: 'Cita cancelada',
-      metadata: { booking_id: id },
-    })
+  if (booking.contact_id) {
+    await query(
+      `insert into contact_activities (contact_id, type, description, metadata)
+       values ($1, 'note', 'Cita cancelada', $2)`,
+      [booking.contact_id, { booking_id: id }]
+    )
   }
   revalidatePath('/calendars')
   revalidatePath('/calendars/bookings')
@@ -347,75 +335,66 @@ export async function cancelBooking(id: string) {
 
 /** [admin] Huecos disponibles para reprogramar una cita (excluye la propia). */
 export async function getRescheduleSlots(bookingId: string) {
-  const supabase = await createClient()
-  const { data: booking } = await supabase
-    .from('bookings')
-    .select('id, calendar_id')
-    .eq('id', bookingId)
-    .single()
+  const booking = await queryOne<{ id: string; calendar_id: string }>(
+    'select id, calendar_id from bookings where id = $1',
+    [bookingId]
+  )
   if (!booking) return { error: 'Cita no encontrada' }
 
-  const { data: calendar } = await supabase
-    .from('calendars')
-    .select('*')
-    .eq('id', booking.calendar_id)
-    .single()
+  const calendar = await queryOne<Calendar>('select * from calendars where id = $1', [
+    booking.calendar_id,
+  ])
   if (!calendar) return { error: 'Calendario no encontrado' }
 
-  const [{ data: availability }, { data: others }] = await Promise.all([
-    supabase.from('calendar_availability').select('*').eq('calendar_id', booking.calendar_id),
-    supabase
-      .from('bookings')
-      .select('starts_at, ends_at')
-      .eq('calendar_id', booking.calendar_id)
-      .eq('status', 'confirmed')
-      .neq('id', bookingId)
-      .gte('starts_at', new Date().toISOString()),
+  const [availability, others] = await Promise.all([
+    query<CalendarAvailability>(
+      'select * from calendar_availability where calendar_id = $1',
+      [booking.calendar_id]
+    ),
+    query<{ starts_at: string; ends_at: string }>(
+      `select starts_at, ends_at from bookings
+       where calendar_id = $1 and status = 'confirmed' and id <> $2 and starts_at >= now()`,
+      [booking.calendar_id, bookingId]
+    ),
   ])
 
-  const days = generateSlots(
-    calendar as Calendar,
-    (availability ?? []) as CalendarAvailability[],
-    others ?? []
-  )
+  const days = generateSlots(calendar, availability, others)
   return { success: true, days }
 }
 
 export async function rescheduleBooking(bookingId: string, slotIso: string) {
-  const supabase = await createClient()
-  const { data: booking } = await supabase
-    .from('bookings')
-    .select('id, calendar_id, contact_id')
-    .eq('id', bookingId)
-    .single()
+  const booking = await queryOne<{ id: string; calendar_id: string; contact_id: string | null }>(
+    'select id, calendar_id, contact_id from bookings where id = $1',
+    [bookingId]
+  )
   if (!booking) return { error: 'Cita no encontrada' }
 
-  const { data: calendar } = await supabase
-    .from('calendars')
-    .select('duration_min')
-    .eq('id', booking.calendar_id)
-    .single()
+  const calendar = await queryOne<{ duration_min: number }>(
+    'select duration_min from calendars where id = $1',
+    [booking.calendar_id]
+  )
   if (!calendar) return { error: 'Calendario no encontrado' }
 
   const startsAt = new Date(slotIso)
   const endsAt = new Date(startsAt.getTime() + calendar.duration_min * 60_000)
 
-  const { error } = await supabase
-    .from('bookings')
-    .update({ starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString() })
-    .eq('id', bookingId)
-  if (error) {
-    if (error.code === '23505') return { error: 'Ese horario ya está ocupado' }
-    return { error: error.message }
+  try {
+    await query('update bookings set starts_at = $1, ends_at = $2 where id = $3', [
+      startsAt.toISOString(),
+      endsAt.toISOString(),
+      bookingId,
+    ])
+  } catch (err) {
+    if (isUniqueViolation(err)) return { error: 'Ese horario ya está ocupado' }
+    return { error: (err as Error).message }
   }
 
   if (booking.contact_id) {
-    await supabase.from('contact_activities').insert({
-      contact_id: booking.contact_id,
-      type: 'note',
-      description: 'Cita reprogramada',
-      metadata: { booking_id: bookingId, starts_at: startsAt.toISOString() },
-    })
+    await query(
+      `insert into contact_activities (contact_id, type, description, metadata)
+       values ($1, 'note', 'Cita reprogramada', $2)`,
+      [booking.contact_id, { booking_id: bookingId, starts_at: startsAt.toISOString() }]
+    )
   }
   revalidatePath('/calendars')
   revalidatePath('/calendars/bookings')

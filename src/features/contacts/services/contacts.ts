@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { query, queryOne } from '@/lib/db'
 import type { Contact, ContactActivity } from '../types'
 
 export interface ListContactsParams {
@@ -11,38 +11,35 @@ export async function listContacts({
   search,
   tag,
 }: ListContactsParams = {}): Promise<Contact[]> {
-  const supabase = await createClient()
-  let query = supabase
-    .from('contacts')
-    .select('*')
-    .order('created_at', { ascending: false })
+  const conditions: string[] = []
+  const params: unknown[] = []
 
   if (search) {
-    const term = `%${search}%`
-    query = query.or(
-      `first_name.ilike.${term},last_name.ilike.${term},email.ilike.${term},phone.ilike.${term},business_name.ilike.${term}`
+    params.push(`%${search}%`)
+    const p = `$${params.length}`
+    conditions.push(
+      `(first_name ilike ${p} or last_name ilike ${p} or email ilike ${p} or phone ilike ${p} or business_name ilike ${p})`
     )
   }
 
   if (tag) {
-    query = query.contains('tags', [tag])
+    params.push([tag])
+    conditions.push(`tags @> $${params.length}`)
   }
 
-  const { data, error } = await query
-  if (error) throw new Error(error.message)
-  return data ?? []
+  const where = conditions.length ? `where ${conditions.join(' and ')}` : ''
+  return query<Contact>(
+    `select * from contacts ${where} order by created_at desc`,
+    params
+  )
 }
 
 /** Devuelve todos los tags distintos presentes en los contactos. */
 export async function listAllTags(): Promise<string[]> {
-  const supabase = await createClient()
-  const { data, error } = await supabase.from('contacts').select('tags')
-  if (error) throw new Error(error.message)
-  const set = new Set<string>()
-  for (const row of data ?? []) {
-    for (const t of (row.tags as string[]) ?? []) set.add(t)
-  }
-  return Array.from(set).sort((a, b) => a.localeCompare(b))
+  const rows = await query<{ tag: string }>(
+    'select distinct unnest(tags) as tag from contacts order by tag'
+  )
+  return rows.map((r) => r.tag)
 }
 
 export interface ContactWithActivities extends Contact {
@@ -53,22 +50,15 @@ export interface ContactWithActivities extends Contact {
 export async function getContactById(
   id: string
 ): Promise<ContactWithActivities | null> {
-  const supabase = await createClient()
-  const { data: contact, error } = await supabase
-    .from('contacts')
-    .select('*')
-    .eq('id', id)
-    .single()
+  const contact = await queryOne<Contact>('select * from contacts where id = $1', [id])
+  if (!contact) return null
 
-  if (error || !contact) return null
+  const activities = await query<ContactActivity>(
+    'select * from contact_activities where contact_id = $1 order by created_at desc',
+    [id]
+  )
 
-  const { data: activities } = await supabase
-    .from('contact_activities')
-    .select('*')
-    .eq('contact_id', id)
-    .order('created_at', { ascending: false })
-
-  return { ...contact, activities: activities ?? [] }
+  return { ...contact, activities }
 }
 
 export interface ContactBooking {
@@ -98,56 +88,43 @@ export interface ContactRelated {
 
 /** Reúne citas, inscripciones a cursos (con progreso) y emails programados de un contacto. */
 export async function getContactRelated(contactId: string): Promise<ContactRelated> {
-  const supabase = await createClient()
-
-  const [{ data: bookings }, { data: enrollments }, { data: emails }] = await Promise.all([
-    supabase
-      .from('bookings')
-      .select('id, starts_at, status, calendar:calendars(name)')
-      .eq('contact_id', contactId)
-      .order('starts_at', { ascending: false }),
-    supabase
-      .from('course_enrollments')
-      .select('id, course:courses(id, title, slug)')
-      .eq('contact_id', contactId),
-    supabase
-      .from('scheduled_emails')
-      .select('id, subject, status, send_at')
-      .eq('contact_id', contactId)
-      .order('send_at', { ascending: true }),
+  const [bookings, enrollments, emails] = await Promise.all([
+    query<{ id: string; starts_at: string; status: string; calendar_name: string | null }>(
+      `select b.id, b.starts_at, b.status, c.name as calendar_name
+       from bookings b left join calendars c on c.id = b.calendar_id
+       where b.contact_id = $1 order by b.starts_at desc`,
+      [contactId]
+    ),
+    query<{ id: string; course_title: string; course_slug: string; completed: string; total: string }>(
+      `select e.id, co.title as course_title, co.slug as course_slug,
+              (select count(*) from course_lesson_progress p where p.enrollment_id = e.id) as completed,
+              (select count(*) from course_lessons l
+                 join course_modules m on m.id = l.module_id
+               where m.course_id = co.id and l.is_published) as total
+       from course_enrollments e join courses co on co.id = e.course_id
+       where e.contact_id = $1`,
+      [contactId]
+    ),
+    query<ContactScheduledEmail>(
+      'select id, subject, status, send_at from scheduled_emails where contact_id = $1 order by send_at asc',
+      [contactId]
+    ),
   ])
 
-  // Progreso por inscripción
-  const enrollmentDetails: ContactEnrollment[] = []
-  for (const e of enrollments ?? []) {
-    const course = (e as unknown as { course: { id: string; title: string; slug: string } | null }).course
-    if (!course) continue
-    const [{ count: completed }, { count: total }] = await Promise.all([
-      supabase
-        .from('course_lesson_progress')
-        .select('*', { count: 'exact', head: true })
-        .eq('enrollment_id', e.id),
-      supabase
-        .from('course_lessons')
-        .select('id, course_modules!inner(course_id)', { count: 'exact', head: true })
-        .eq('is_published', true)
-        .eq('course_modules.course_id', course.id),
-    ])
-    enrollmentDetails.push({
-      id: e.id,
-      courseTitle: course.title,
-      courseSlug: course.slug,
-      completed: completed ?? 0,
-      total: total ?? 0,
-    })
-  }
-
   return {
-    bookings: (bookings ?? []).map((b) => {
-      const cal = (b as unknown as { calendar: { name: string } | null }).calendar
-      return { id: b.id, calendarName: cal?.name ?? null, starts_at: b.starts_at, status: b.status }
-    }),
-    enrollments: enrollmentDetails,
-    scheduledEmails: (emails ?? []) as ContactScheduledEmail[],
+    bookings: bookings.map((b) => ({
+      id: b.id,
+      calendarName: b.calendar_name,
+      starts_at: b.starts_at,
+      status: b.status,
+    })),
+    enrollments: enrollments.map((e) => ({
+      id: e.id,
+      courseTitle: e.course_title,
+      courseSlug: e.course_slug,
+      completed: Number(e.completed),
+      total: Number(e.total),
+    })),
+    scheduledEmails: emails,
   }
 }

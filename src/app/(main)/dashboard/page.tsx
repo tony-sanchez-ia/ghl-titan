@@ -1,18 +1,17 @@
 import Link from 'next/link'
 import { Users, Calendar, CalendarCheck } from 'lucide-react'
 import { ui } from '@/shared/lib/ui'
-import { createClient } from '@/lib/supabase/server'
+import { queryOne } from '@/lib/db'
 import { getBookingStats } from '@/features/scheduling/services/calendars'
 
 export default async function DashboardPage() {
-  const supabase = await createClient()
-  const [{ count: contactsCount }, bookingStats] = await Promise.all([
-    supabase.from('contacts').select('*', { count: 'exact', head: true }),
+  const [contactsRow, bookingStats] = await Promise.all([
+    queryOne<{ count: string }>('select count(*) as count from contacts'),
     getBookingStats(),
   ])
 
   const stats = [
-    { label: 'Contactos', value: contactsCount ?? 0, icon: Users, href: '/contacts' },
+    { label: 'Contactos', value: Number(contactsRow?.count ?? 0), icon: Users, href: '/contacts' },
     { label: 'Citas próximas', value: bookingStats.upcoming, icon: Calendar, href: '/calendars' },
     { label: 'Citas este mes', value: bookingStats.thisMonth, icon: CalendarCheck, href: '/calendars' },
   ]

@@ -477,6 +477,12 @@ npm run lint         # ESLint
   Sintoma delator: OOM recurrente del dev server + error MODULE_UNPARSABLE en el log.
 - **Aplicar en**: Todos los proyectos
 
+### 2026-07-01: No borrar .next con el dev server corriendo
+- **Error**: `rm -rf .next` con `next dev` activo → el server queda sirviendo 500
+  (ENOENT routes-manifest.json) hasta que se reinicia.
+- **Fix**: parar el dev server antes de limpiar la cache, o reiniciarlo justo despues.
+- **Aplicar en**: Todos los proyectos
+
 ---
 
 *V4: Todo es un Skill. Agent-First. El usuario habla, tu construyes.*

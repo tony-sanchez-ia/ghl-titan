@@ -76,3 +76,9 @@ referencias/
 
 # Exports de conversación (contienen transcript con secretos leídos — NUNCA subir)
 exports/
+
+# Backup del env de Supabase (secretos — NUNCA subir)
+.env.local.bak-supabase
+
+# Artefactos de sesiones Playwright MCP (screenshots/logs de testing)
+.playwright-mcp/

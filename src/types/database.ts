@@ -1,8 +1,7 @@
-export interface Profile {
+export interface User {
   id: string
   email: string
   full_name: string | null
-  avatar_url: string | null
   created_at: string
   updated_at: string
 }
@@ -17,6 +16,8 @@ export interface Contact {
   business_name: string | null
   tags: string[]
   source: string
+  unsubscribed_at: string | null
+  unsubscribe_token: string
   created_at: string
   last_activity_at: string | null
   updated_at: string
@@ -26,8 +27,10 @@ export type ContactActivityType =
   | 'imported'
   | 'booking_created'
   | 'email_sent'
+  | 'email_clicked'
   | 'form_submitted'
   | 'enrolled'
+  | 'tag_added'
   | 'note'
 
 export interface ContactActivity {
@@ -172,15 +175,129 @@ export interface Automation {
   updated_at: string
 }
 
-export interface AutomationStep {
+// ── Workflow visual (PRP-006) ────────────────────────────────────────────────
+export type TriggerType = 'form_submitted' | 'booking_created' | 'tag_added'
+
+export interface AutomationTriggerDef {
   id: string
   automation_id: string
-  position: number
-  delay_value: number
-  delay_unit: DelayUnit
-  subject: string
-  body: string
+  type: TriggerType
+  config: TriggerConfig
   created_at: string
+}
+export interface TriggerConfig {
+  form_id?: string
+  calendar_id?: string | null // null/ausente = todos los calendarios
+  tag?: string
+}
+
+export type NodeType = 'send_email' | 'wait' | 'add_tag' | 'add_note' | 'branch_email_click'
+export type NodeBranch = 'yes' | 'no'
+
+export interface AutomationNode {
+  id: string
+  automation_id: string
+  parent_node_id: string | null // null = cadena raíz
+  branch: NodeBranch | null // solo hijos de branch_email_click
+  position: number
+  type: NodeType
+  config: NodeConfig
+  created_at: string
+}
+export interface NodeConfig {
+  subject?: string // send_email
+  body?: string // send_email
+  delay_value?: number // wait
+  delay_unit?: DelayUnit // wait
+  tag?: string // add_tag
+  note?: string // add_note
+  wait_value?: number // branch_email_click (ventana de espera del click)
+  wait_unit?: DelayUnit // branch_email_click
+}
+
+export type EnrollmentStatus = 'active' | 'waiting_click' | 'completed' | 'cancelled'
+
+export interface AutomationEnrollment {
+  id: string
+  automation_id: string
+  contact_id: string
+  status: EnrollmentStatus
+  current_node_id: string | null
+  next_run_at: string | null
+  wait_until: string | null
+  waiting_email_id: string | null
+  context: { email?: string; trigger_type?: TriggerType }
+  created_at: string
+  updated_at: string
+}
+
+// ── Email Marketing (PRP-007) ────────────────────────────────────────────────
+export type EmailBlockType = 'header' | 'text' | 'image' | 'button' | 'divider' | 'spacer' | 'footer'
+
+export interface EmailBlock {
+  id: string
+  type: EmailBlockType
+  config: EmailBlockConfig
+}
+export interface EmailBlockConfig {
+  logo_url?: string // header
+  title?: string // header
+  text?: string // text (admite {{nombre}} {{apellido}} {{email}} y saltos de línea)
+  size?: 'normal' | 'title' | 'subtitle' // text
+  align?: 'left' | 'center' | 'right' // text, image, button
+  image_url?: string // image
+  alt?: string // image
+  link_url?: string // image (opcional: la imagen enlaza)
+  label?: string // button
+  url?: string // button
+  height?: number // spacer (px)
+  footer_text?: string // footer (el link de baja se añade siempre)
+}
+
+export type CampaignStatus = 'draft' | 'scheduled' | 'sending' | 'sent'
+
+export interface CampaignAudience {
+  type: 'all' | 'tags'
+  tags?: string[]
+}
+
+export interface EmailCampaign {
+  id: string
+  name: string
+  subject: string
+  design: EmailBlock[]
+  html_snapshot: string | null
+  link_urls: string[]
+  status: CampaignStatus
+  audience: CampaignAudience
+  scheduled_at: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type CampaignRecipientStatus = 'pending' | 'sent' | 'failed' | 'skipped'
+
+export interface CampaignRecipient {
+  id: string
+  campaign_id: string
+  contact_id: string
+  to_email: string
+  status: CampaignRecipientStatus
+  sent_at: string | null
+  error: string | null
+  click_token: string
+  clicked_at: string | null
+  created_at: string
+}
+
+export interface EmailTemplate {
+  id: string
+  name: string
+  design: EmailBlock[]
+  created_at: string
+  updated_at: string
 }
 
 export type ScheduledEmailStatus = 'pending' | 'sent' | 'failed'
@@ -188,7 +305,9 @@ export type ScheduledEmailStatus = 'pending' | 'sent' | 'failed'
 export interface ScheduledEmail {
   id: string
   automation_id: string
-  step_id: string
+  step_id: string | null // legado (modelo lineal pre-PRP-006)
+  node_id: string | null
+  enrollment_id: string | null
   contact_id: string
   to_email: string
   subject: string
@@ -197,102 +316,7 @@ export interface ScheduledEmail {
   status: ScheduledEmailStatus
   sent_at: string | null
   error: string | null
+  click_token: string | null
+  clicked_at: string | null
   created_at: string
-}
-
-export interface Database {
-  public: {
-    Tables: {
-      profiles: {
-        Row: Profile
-        Insert: Omit<Profile, 'created_at' | 'updated_at'>
-        Update: Partial<Omit<Profile, 'id' | 'created_at'>>
-      }
-      contacts: {
-        Row: Contact
-        Insert: Partial<Omit<Contact, 'id' | 'created_at' | 'updated_at'>>
-        Update: Partial<Omit<Contact, 'id' | 'created_at'>>
-      }
-      contact_activities: {
-        Row: ContactActivity
-        Insert: Omit<ContactActivity, 'id' | 'created_at'>
-        Update: Partial<Omit<ContactActivity, 'id' | 'created_at'>>
-      }
-      calendars: {
-        Row: Calendar
-        Insert: Partial<Omit<Calendar, 'id' | 'created_at' | 'updated_at'>> &
-          Pick<Calendar, 'slug' | 'name'>
-        Update: Partial<Omit<Calendar, 'id' | 'created_at'>>
-      }
-      calendar_availability: {
-        Row: CalendarAvailability
-        Insert: Omit<CalendarAvailability, 'id' | 'created_at'>
-        Update: Partial<Omit<CalendarAvailability, 'id' | 'created_at'>>
-      }
-      bookings: {
-        Row: Booking
-        Insert: Partial<Omit<Booking, 'id' | 'created_at'>> &
-          Pick<Booking, 'calendar_id' | 'name' | 'email' | 'starts_at' | 'ends_at'>
-        Update: Partial<Omit<Booking, 'id' | 'created_at'>>
-      }
-      courses: {
-        Row: Course
-        Insert: Partial<Omit<Course, 'id' | 'created_at' | 'updated_at'>> &
-          Pick<Course, 'slug' | 'title'>
-        Update: Partial<Omit<Course, 'id' | 'created_at'>>
-      }
-      course_modules: {
-        Row: CourseModule
-        Insert: Partial<Omit<CourseModule, 'id' | 'created_at'>> &
-          Pick<CourseModule, 'course_id' | 'title'>
-        Update: Partial<Omit<CourseModule, 'id' | 'created_at'>>
-      }
-      course_lessons: {
-        Row: CourseLesson
-        Insert: Partial<Omit<CourseLesson, 'id' | 'created_at'>> &
-          Pick<CourseLesson, 'module_id' | 'title' | 'type'>
-        Update: Partial<Omit<CourseLesson, 'id' | 'created_at'>>
-      }
-      course_enrollments: {
-        Row: CourseEnrollment
-        Insert: Partial<Omit<CourseEnrollment, 'id' | 'created_at'>> &
-          Pick<CourseEnrollment, 'course_id' | 'name' | 'email'>
-        Update: Partial<Omit<CourseEnrollment, 'id' | 'created_at'>>
-      }
-      course_lesson_progress: {
-        Row: CourseLessonProgress
-        Insert: Pick<CourseLessonProgress, 'enrollment_id' | 'lesson_id'>
-        Update: never
-      }
-      forms: {
-        Row: Form
-        Insert: Partial<Omit<Form, 'id' | 'created_at' | 'updated_at'>> &
-          Pick<Form, 'slug' | 'name'>
-        Update: Partial<Omit<Form, 'id' | 'created_at'>>
-      }
-      automations: {
-        Row: Automation
-        Insert: Partial<Omit<Automation, 'id' | 'created_at' | 'updated_at'>> &
-          Pick<Automation, 'name'>
-        Update: Partial<Omit<Automation, 'id' | 'created_at'>>
-      }
-      automation_steps: {
-        Row: AutomationStep
-        Insert: Partial<Omit<AutomationStep, 'id' | 'created_at'>> &
-          Pick<AutomationStep, 'automation_id' | 'subject' | 'body'>
-        Update: Partial<Omit<AutomationStep, 'id' | 'created_at'>>
-      }
-      automation_triggers: {
-        Row: { automation_id: string; form_id: string }
-        Insert: { automation_id: string; form_id: string }
-        Update: never
-      }
-      scheduled_emails: {
-        Row: ScheduledEmail
-        Insert: Partial<Omit<ScheduledEmail, 'id' | 'created_at'>> &
-          Pick<ScheduledEmail, 'automation_id' | 'step_id' | 'contact_id' | 'to_email' | 'subject' | 'body' | 'send_at'>
-        Update: Partial<Omit<ScheduledEmail, 'id' | 'created_at'>>
-      }
-    }
-  }
 }

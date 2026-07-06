@@ -1,17 +1,13 @@
-// Importa contactos del CSV de GHL usando la service_role key.
+// Importa contactos del CSV de GHL directo a Neon (pg).
 // Replica la lógica de src/features/contacts/services/csv-import.ts
 // Uso: node scripts/import-contacts.js <ruta-al-csv>
 const fs = require('fs')
 const path = require('path')
 const Papa = require('papaparse')
-const { createClient } = require('@supabase/supabase-js')
+const { Client } = require('pg')
 
 const env = fs.readFileSync(path.join(__dirname, '..', '.env.local'), 'utf8')
-const url = env.match(/^NEXT_PUBLIC_SUPABASE_URL=(.+)$/m)[1]
-const serviceKey = env.match(/^SUPABASE_SERVICE_ROLE_KEY=(.+)$/m)[1]
-const supabase = createClient(url, serviceKey, {
-  auth: { autoRefreshToken: false, persistSession: false },
-})
+const dbUrl = env.match(/^DATABASE_URL=(.+)$/m)[1]
 
 const clean = (v) => {
   const s = (v ?? '').trim()
@@ -51,40 +47,56 @@ async function main() {
       business_name: clean(raw['Business Name']),
       tags: parseTags(raw['Tags']),
       last_activity_at: parseDate(raw['Last Activity']),
-      source: 'ghl_import',
     })
   }
 
-  const ghlIds = rows.map((r) => r.ghl_contact_id).filter(Boolean)
-  const { data: existing } = await supabase
-    .from('contacts')
-    .select('ghl_contact_id')
-    .in('ghl_contact_id', ghlIds)
-  const existingSet = new Set((existing ?? []).map((e) => e.ghl_contact_id))
+  const client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } })
+  await client.connect()
 
-  const { data: upserted, error } = await supabase
-    .from('contacts')
-    .upsert(rows, { onConflict: 'ghl_contact_id' })
-    .select('id, ghl_contact_id')
-  if (error) {
-    console.error('ERROR upsert:', error.message)
-    process.exit(1)
+  const ghlIds = rows.map((r) => r.ghl_contact_id).filter(Boolean)
+  const existing = await client.query(
+    'select ghl_contact_id from contacts where ghl_contact_id = any($1)',
+    [ghlIds]
+  )
+  const existingSet = new Set(existing.rows.map((e) => e.ghl_contact_id))
+
+  const newIds = []
+  for (const r of rows) {
+    const res = await client.query(
+      `insert into contacts (ghl_contact_id, first_name, last_name, email, phone, business_name, tags, last_activity_at, source)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, 'ghl_import')
+       on conflict (ghl_contact_id) do update set
+         first_name = excluded.first_name,
+         last_name = excluded.last_name,
+         email = excluded.email,
+         phone = excluded.phone,
+         business_name = excluded.business_name,
+         tags = excluded.tags,
+         last_activity_at = excluded.last_activity_at,
+         updated_at = now()
+       returning id, ghl_contact_id`,
+      [r.ghl_contact_id, r.first_name, r.last_name, r.email, r.phone, r.business_name, r.tags, r.last_activity_at]
+    )
+    const c = res.rows[0]
+    if (c.ghl_contact_id && !existingSet.has(c.ghl_contact_id)) newIds.push(c.id)
   }
 
-  const newActivities = (upserted ?? [])
-    .filter((c) => c.ghl_contact_id && !existingSet.has(c.ghl_contact_id))
-    .map((c) => ({
-      contact_id: c.id,
-      type: 'imported',
-      description: 'Importado desde GoHighLevel',
-      metadata: {},
-    }))
-  if (newActivities.length > 0) {
-    await supabase.from('contact_activities').insert(newActivities)
+  if (newIds.length > 0) {
+    await client.query(
+      `insert into contact_activities (contact_id, type, description, metadata)
+       select unnest($1::uuid[]), 'imported', 'Importado desde GoHighLevel', '{}'`,
+      [newIds]
+    )
   }
 
   const withTags = rows.filter((r) => r.tags.length > 0).length
-  console.log(`OK: ${rows.length} contactos procesados (${rows.length - existingSet.size} nuevos, ${existingSet.size} actualizados, ${withTags} con tags)`)
+  console.log(
+    `OK: ${rows.length} contactos procesados (${rows.length - existingSet.size} nuevos, ${existingSet.size} actualizados, ${withTags} con tags)`
+  )
+  await client.end()
 }
 
-main()
+main().catch((err) => {
+  console.error('ERROR:', err.message)
+  process.exit(1)
+})

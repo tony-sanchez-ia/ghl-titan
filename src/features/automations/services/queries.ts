@@ -1,101 +1,91 @@
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import type { Form, Automation, AutomationStep } from '@/types/database'
+import { query, queryOne } from '@/lib/db'
+import type {
+  Form,
+  Automation,
+  AutomationNode,
+  AutomationTriggerDef,
+} from '@/types/database'
 
 // ─── Formularios ─────────────────────────────────────────────────────────────
-export interface FormListItem extends Form {
-  submissionTriggers: number
-}
-
 export async function listForms(): Promise<Form[]> {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('forms')
-    .select('*')
-    .order('created_at', { ascending: false })
-  if (error) throw new Error(error.message)
-  return data ?? []
+  return query<Form>('select * from forms order by created_at desc')
 }
 
 export async function getFormById(id: string): Promise<Form | null> {
-  const supabase = await createClient()
-  const { data } = await supabase.from('forms').select('*').eq('id', id).single()
-  return (data as Form) ?? null
+  return queryOne<Form>('select * from forms where id = $1', [id])
 }
 
-/** [público] Formulario por slug (service-role). */
+/** [público] Formulario por slug. */
 export async function getPublicFormBySlug(slug: string): Promise<Form | null> {
-  const admin = createAdminClient()
-  const { data } = await admin.from('forms').select('*').eq('slug', slug).single()
-  return (data as Form) ?? null
+  return queryOne<Form>('select * from forms where slug = $1', [slug])
 }
 
 // ─── Automatizaciones ──────────────────────────────────────────────────────────
 export interface AutomationListItem extends Automation {
-  stepCount: number
+  nodeCount: number
+  activeEnrollments: number
 }
 
 export async function listAutomations(): Promise<AutomationListItem[]> {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('automations')
-    .select('*, automation_steps(count)')
-    .order('created_at', { ascending: false })
-  if (error) throw new Error(error.message)
-  return (data ?? []).map((a) => {
-    const { automation_steps, ...rest } = a as Automation & {
-      automation_steps: { count: number }[]
-    }
-    return { ...rest, stepCount: automation_steps?.[0]?.count ?? 0 }
-  })
+  const rows = await query<Automation & { node_count: string; active_enrollments: string }>(
+    `select a.*,
+       (select count(*) from automation_nodes n where n.automation_id = a.id) as node_count,
+       (select count(*) from automation_enrollments e
+         where e.automation_id = a.id and e.status in ('active','waiting_click')) as active_enrollments
+     from automations a order by a.created_at desc`
+  )
+  return rows.map(({ node_count, active_enrollments, ...rest }) => ({
+    ...rest,
+    nodeCount: Number(node_count),
+    activeEnrollments: Number(active_enrollments),
+  }))
 }
 
-export interface AutomationWithDetail extends Automation {
-  steps: AutomationStep[]
-  formIds: string[]
+/** Métricas por nodo de email: enviados y clicks (para el builder). */
+export interface NodeEmailStats {
+  node_id: string
+  sent: number
+  clicked: number
 }
 
-export async function getAutomationForEdit(
-  id: string
-): Promise<AutomationWithDetail | null> {
-  const supabase = await createClient()
-  const { data: automation } = await supabase
-    .from('automations')
-    .select('*')
-    .eq('id', id)
-    .single()
+export interface WorkflowForEdit extends Automation {
+  triggers: AutomationTriggerDef[]
+  nodes: AutomationNode[] // lista plana ordenada; el builder arma el árbol
+  emailStats: NodeEmailStats[]
+}
+
+export async function getWorkflowForEdit(id: string): Promise<WorkflowForEdit | null> {
+  const automation = await queryOne<Automation>('select * from automations where id = $1', [id])
   if (!automation) return null
 
-  const [{ data: steps }, { data: triggers }] = await Promise.all([
-    supabase.from('automation_steps').select('*').eq('automation_id', id).order('position'),
-    supabase.from('automation_triggers').select('form_id').eq('automation_id', id),
+  const [triggers, nodes, stats] = await Promise.all([
+    query<AutomationTriggerDef>(
+      'select * from automation_trigger_defs where automation_id = $1 order by created_at',
+      [id]
+    ),
+    query<AutomationNode>(
+      'select * from automation_nodes where automation_id = $1 order by parent_node_id nulls first, branch, position',
+      [id]
+    ),
+    query<{ node_id: string; sent: string; clicked: string }>(
+      `select node_id,
+              count(*) filter (where status = 'sent') as sent,
+              count(*) filter (where clicked_at is not null) as clicked
+       from scheduled_emails
+       where automation_id = $1 and node_id is not null
+       group by node_id`,
+      [id]
+    ),
   ])
 
   return {
-    ...(automation as Automation),
-    steps: (steps ?? []) as AutomationStep[],
-    formIds: (triggers ?? []).map((t) => t.form_id),
+    ...automation,
+    triggers,
+    nodes,
+    emailStats: stats.map((s) => ({
+      node_id: s.node_id,
+      sent: Number(s.sent),
+      clicked: Number(s.clicked),
+    })),
   }
-}
-
-/** Automatización activa vinculada a un formulario (la primera). */
-export async function getActiveAutomationForForm(
-  formId: string
-): Promise<string | null> {
-  const admin = createAdminClient()
-  const { data: triggers } = await admin
-    .from('automation_triggers')
-    .select('automation_id')
-    .eq('form_id', formId)
-  if (!triggers || triggers.length === 0) return null
-
-  const ids = triggers.map((t) => t.automation_id)
-  const { data: active } = await admin
-    .from('automations')
-    .select('id')
-    .in('id', ids)
-    .eq('status', 'active')
-    .limit(1)
-    .maybeSingle()
-  return active?.id ?? null
 }

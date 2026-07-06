@@ -1,5 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { query, queryOne } from '@/lib/db'
 import type { Calendar, CalendarAvailability, Booking } from '@/types/database'
 
 export interface CalendarWithAvailability extends Calendar {
@@ -8,35 +7,22 @@ export interface CalendarWithAvailability extends Calendar {
 
 /** [admin] Lista los calendarios con el conteo de citas próximas. */
 export async function listCalendars(): Promise<Calendar[]> {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('calendars')
-    .select('*')
-    .order('created_at', { ascending: false })
-  if (error) throw new Error(error.message)
-  return data ?? []
+  return query<Calendar>('select * from calendars order by created_at desc')
 }
 
 /** [admin] Calendario con sus franjas de disponibilidad. */
 export async function getCalendarById(
   id: string
 ): Promise<CalendarWithAvailability | null> {
-  const supabase = await createClient()
-  const { data: calendar, error } = await supabase
-    .from('calendars')
-    .select('*')
-    .eq('id', id)
-    .single()
-  if (error || !calendar) return null
+  const calendar = await queryOne<Calendar>('select * from calendars where id = $1', [id])
+  if (!calendar) return null
 
-  const { data: availability } = await supabase
-    .from('calendar_availability')
-    .select('*')
-    .eq('calendar_id', id)
-    .order('weekday')
-    .order('start_time')
+  const availability = await query<CalendarAvailability>(
+    'select * from calendar_availability where calendar_id = $1 order by weekday, start_time',
+    [id]
+  )
 
-  return { ...calendar, availability: availability ?? [] }
+  return { ...calendar, availability }
 }
 
 /** [público] Calendario activo por slug + disponibilidad + citas futuras confirmadas. */
@@ -45,52 +31,55 @@ export async function getPublicCalendarBySlug(slug: string): Promise<{
   availability: CalendarAvailability[]
   bookings: Pick<Booking, 'starts_at' | 'ends_at'>[]
 } | null> {
-  const admin = createAdminClient()
-  const { data: calendar } = await admin
-    .from('calendars')
-    .select('*')
-    .eq('slug', slug)
-    .eq('is_active', true)
-    .single()
+  const calendar = await queryOne<Calendar>(
+    'select * from calendars where slug = $1 and is_active',
+    [slug]
+  )
   if (!calendar) return null
 
-  const { data: availability } = await admin
-    .from('calendar_availability')
-    .select('*')
-    .eq('calendar_id', calendar.id)
+  const [availability, bookings] = await Promise.all([
+    query<CalendarAvailability>(
+      'select * from calendar_availability where calendar_id = $1',
+      [calendar.id]
+    ),
+    query<Pick<Booking, 'starts_at' | 'ends_at'>>(
+      `select starts_at, ends_at from bookings
+       where calendar_id = $1 and status = 'confirmed' and starts_at >= now()`,
+      [calendar.id]
+    ),
+  ])
 
-  const { data: bookings } = await admin
-    .from('bookings')
-    .select('starts_at, ends_at')
-    .eq('calendar_id', calendar.id)
-    .eq('status', 'confirmed')
-    .gte('starts_at', new Date().toISOString())
-
-  return {
-    calendar: calendar as Calendar,
-    availability: (availability ?? []) as CalendarAvailability[],
-    bookings: (bookings ?? []) as Pick<Booking, 'starts_at' | 'ends_at'>[],
-  }
+  return { calendar, availability, bookings }
 }
 
 export interface BookingWithCalendar extends Booking {
   calendar: Pick<Calendar, 'name' | 'slug'> | null
 }
 
+type BookingRow = Booking & { calendar_name: string | null; calendar_slug: string | null }
+
+function toBookingWithCalendar(row: BookingRow): BookingWithCalendar {
+  const { calendar_name, calendar_slug, ...booking } = row
+  return {
+    ...booking,
+    calendar: calendar_name ? { name: calendar_name, slug: calendar_slug ?? '' } : null,
+  }
+}
+
+const BOOKING_SELECT = `select b.*, c.name as calendar_name, c.slug as calendar_slug
+  from bookings b left join calendars c on c.id = b.calendar_id`
+
 /** [admin] Próximas citas confirmadas. */
 export async function listUpcomingBookings(
   limit = 50
 ): Promise<BookingWithCalendar[]> {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('bookings')
-    .select('*, calendar:calendars(name, slug)')
-    .eq('status', 'confirmed')
-    .gte('starts_at', new Date().toISOString())
-    .order('starts_at', { ascending: true })
-    .limit(limit)
-  if (error) throw new Error(error.message)
-  return (data ?? []) as unknown as BookingWithCalendar[]
+  const rows = await query<BookingRow>(
+    `${BOOKING_SELECT}
+     where b.status = 'confirmed' and b.starts_at >= now()
+     order by b.starts_at asc limit $1`,
+    [limit]
+  )
+  return rows.map(toBookingWithCalendar)
 }
 
 /** [admin] Conteos para los tiles del dashboard. */
@@ -98,30 +87,14 @@ export async function getBookingStats(): Promise<{
   upcoming: number
   thisMonth: number
 }> {
-  const supabase = await createClient()
-  const now = new Date()
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-  const startOfNextMonth = new Date(
-    now.getFullYear(),
-    now.getMonth() + 1,
-    1
-  ).toISOString()
-
-  const [{ count: upcoming }, { count: thisMonth }] = await Promise.all([
-    supabase
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'confirmed')
-      .gte('starts_at', now.toISOString()),
-    supabase
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'confirmed')
-      .gte('starts_at', startOfMonth)
-      .lt('starts_at', startOfNextMonth),
-  ])
-
-  return { upcoming: upcoming ?? 0, thisMonth: thisMonth ?? 0 }
+  const row = await queryOne<{ upcoming: string; this_month: string }>(
+    `select
+       count(*) filter (where starts_at >= now()) as upcoming,
+       count(*) filter (where starts_at >= date_trunc('month', now())
+                          and starts_at < date_trunc('month', now()) + interval '1 month') as this_month
+     from bookings where status = 'confirmed'`
+  )
+  return { upcoming: Number(row?.upcoming ?? 0), thisMonth: Number(row?.this_month ?? 0) }
 }
 
 export type BookingFilter = 'upcoming' | 'past' | 'cancelled'
@@ -130,19 +103,21 @@ export type BookingFilter = 'upcoming' | 'past' | 'cancelled'
 export async function listBookings(
   filter: BookingFilter = 'upcoming'
 ): Promise<BookingWithCalendar[]> {
-  const supabase = await createClient()
-  const nowIso = new Date().toISOString()
-  let query = supabase.from('bookings').select('*, calendar:calendars(name, slug)')
-
+  let where: string
+  let order: string
   if (filter === 'upcoming') {
-    query = query.eq('status', 'confirmed').gte('starts_at', nowIso).order('starts_at', { ascending: true })
+    where = `b.status = 'confirmed' and b.starts_at >= now()`
+    order = 'asc'
   } else if (filter === 'past') {
-    query = query.eq('status', 'confirmed').lt('starts_at', nowIso).order('starts_at', { ascending: false })
+    where = `b.status = 'confirmed' and b.starts_at < now()`
+    order = 'desc'
   } else {
-    query = query.eq('status', 'cancelled').order('starts_at', { ascending: false })
+    where = `b.status = 'cancelled'`
+    order = 'desc'
   }
 
-  const { data, error } = await query.limit(100)
-  if (error) throw new Error(error.message)
-  return (data ?? []) as unknown as BookingWithCalendar[]
+  const rows = await query<BookingRow>(
+    `${BOOKING_SELECT} where ${where} order by b.starts_at ${order} limit 100`
+  )
+  return rows.map(toBookingWithCalendar)
 }

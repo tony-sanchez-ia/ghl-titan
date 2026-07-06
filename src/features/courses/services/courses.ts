@@ -1,5 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { query, queryOne } from '@/lib/db'
 import type {
   Course,
   CourseModule,
@@ -20,24 +19,17 @@ export interface CourseListItem extends Course {
 
 /** [admin] Lista de cursos con conteos. */
 export async function listCourses(): Promise<CourseListItem[]> {
-  const supabase = await createClient()
-  const { data: courses, error } = await supabase
-    .from('courses')
-    .select('*, course_modules(count), course_enrollments(count)')
-    .order('created_at', { ascending: false })
-  if (error) throw new Error(error.message)
-
-  return (courses ?? []).map((c) => {
-    const { course_modules, course_enrollments, ...course } = c as Course & {
-      course_modules: { count: number }[]
-      course_enrollments: { count: number }[]
-    }
-    return {
-      ...course,
-      moduleCount: course_modules?.[0]?.count ?? 0,
-      enrollmentCount: course_enrollments?.[0]?.count ?? 0,
-    }
-  })
+  const rows = await query<Course & { module_count: string; enrollment_count: string }>(
+    `select c.*,
+       (select count(*) from course_modules m where m.course_id = c.id) as module_count,
+       (select count(*) from course_enrollments e where e.course_id = c.id) as enrollment_count
+     from courses c order by c.created_at desc`
+  )
+  return rows.map(({ module_count, enrollment_count, ...course }) => ({
+    ...course,
+    moduleCount: Number(module_count),
+    enrollmentCount: Number(enrollment_count),
+  }))
 }
 
 function assemble(
@@ -60,56 +52,45 @@ function assemble(
 export async function getCourseForEdit(
   id: string
 ): Promise<CourseWithContent | null> {
-  const supabase = await createClient()
-  const { data: course } = await supabase.from('courses').select('*').eq('id', id).single()
+  const course = await queryOne<Course>('select * from courses where id = $1', [id])
   if (!course) return null
 
-  const { data: modules } = await supabase
-    .from('course_modules')
-    .select('*')
-    .eq('course_id', id)
-    .order('position')
-  const moduleIds = (modules ?? []).map((m) => m.id)
-  const { data: lessons } = moduleIds.length
-    ? await supabase.from('course_lessons').select('*').in('module_id', moduleIds).order('position')
-    : { data: [] }
+  const modules = await query<CourseModule>(
+    'select * from course_modules where course_id = $1 order by position',
+    [id]
+  )
+  const lessons = modules.length
+    ? await query<CourseLesson>(
+        'select * from course_lessons where module_id = any($1) order by position',
+        [modules.map((m) => m.id)]
+      )
+    : []
 
-  return assemble(course as Course, (modules ?? []) as CourseModule[], (lessons ?? []) as CourseLesson[])
+  return assemble(course, modules, lessons)
 }
 
 /** [público] Curso publicado por slug, solo con lecciones publicadas. */
 export async function getPublicCourse(
   slug: string
 ): Promise<CourseWithContent | null> {
-  const admin = createAdminClient()
-  const { data: course } = await admin
-    .from('courses')
-    .select('*')
-    .eq('slug', slug)
-    .eq('status', 'published')
-    .single()
+  const course = await queryOne<Course>(
+    `select * from courses where slug = $1 and status = 'published'`,
+    [slug]
+  )
   if (!course) return null
 
-  const { data: modules } = await admin
-    .from('course_modules')
-    .select('*')
-    .eq('course_id', course.id)
-    .order('position')
-  const moduleIds = (modules ?? []).map((m) => m.id)
-  const { data: lessons } = moduleIds.length
-    ? await admin
-        .from('course_lessons')
-        .select('*')
-        .in('module_id', moduleIds)
-        .eq('is_published', true)
-        .order('position')
-    : { data: [] }
-
-  const assembled = assemble(
-    course as Course,
-    (modules ?? []) as CourseModule[],
-    (lessons ?? []) as CourseLesson[]
+  const modules = await query<CourseModule>(
+    'select * from course_modules where course_id = $1 order by position',
+    [course.id]
   )
+  const lessons = modules.length
+    ? await query<CourseLesson>(
+        'select * from course_lessons where module_id = any($1) and is_published order by position',
+        [modules.map((m) => m.id)]
+      )
+    : []
+
+  const assembled = assemble(course, modules, lessons)
   // Oculta módulos sin lecciones publicadas
   assembled.modules = assembled.modules.filter((m) => m.lessons.length > 0)
   return assembled
@@ -120,23 +101,20 @@ export async function getEnrollment(
   courseId: string,
   email: string
 ): Promise<{ enrollment: CourseEnrollment; completedLessonIds: string[] } | null> {
-  const admin = createAdminClient()
-  const { data: enrollment } = await admin
-    .from('course_enrollments')
-    .select('*')
-    .eq('course_id', courseId)
-    .ilike('email', email)
-    .maybeSingle()
+  const enrollment = await queryOne<CourseEnrollment>(
+    'select * from course_enrollments where course_id = $1 and email ilike $2',
+    [courseId, email]
+  )
   if (!enrollment) return null
 
-  const { data: progress } = await admin
-    .from('course_lesson_progress')
-    .select('lesson_id')
-    .eq('enrollment_id', enrollment.id)
+  const progress = await query<{ lesson_id: string }>(
+    'select lesson_id from course_lesson_progress where enrollment_id = $1',
+    [enrollment.id]
+  )
 
   return {
-    enrollment: enrollment as CourseEnrollment,
-    completedLessonIds: (progress ?? []).map((p) => p.lesson_id),
+    enrollment,
+    completedLessonIds: progress.map((p) => p.lesson_id),
   }
 }
 

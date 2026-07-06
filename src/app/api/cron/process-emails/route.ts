@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server'
 import { processDueEmails } from '@/features/automations/services/email-engine'
+import { processEnrollments } from '@/features/automations/services/engine'
+import { processCampaigns } from '@/features/marketing/services/campaign-engine'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * Procesa los emails programados vencidos. Protegido por token.
+ * Avanza los workflows (esperas vencidas + ramas expiradas) y envía los
+ * emails programados vencidos. Protegido por token.
  * Configúralo en un cron (Vercel Cron, n8n, cron-job.org...):
  *   GET /api/cron/process-emails?token=CRON_SECRET
  */
@@ -14,6 +17,8 @@ export async function GET(request: Request) {
   if (!secret || token !== secret) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const result = await processDueEmails()
-  return NextResponse.json({ ok: true, ...result })
+  const enrollments = await processEnrollments()
+  const emails = await processDueEmails()
+  const campaigns = await processCampaigns()
+  return NextResponse.json({ ok: true, enrollments: enrollments.processed, ...emails, campaigns })
 }
