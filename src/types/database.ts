@@ -374,3 +374,120 @@ export interface ScheduledEmail {
   clicked_at: string | null
   created_at: string
 }
+
+// ── Funnels: landing pages y embudos de venta (PRP-009) ─────────────────────
+
+export type FunnelStatus = 'draft' | 'published'
+
+export interface Funnel {
+  id: string
+  name: string
+  slug: string
+  status: FunnelStatus
+  brief: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface FunnelStep {
+  id: string
+  funnel_id: string
+  slug: string
+  name: string
+  position: number
+  seo_title: string | null
+  seo_description: string | null
+  ab_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+// Diseño de PÁGINA web (no email): mismo lenguaje secciones/columnas/bloques
+// que EmailDesign pero con render web propio (Tailwind, full-width).
+export type PageBlockType =
+  | 'heading'
+  | 'text'
+  | 'image'
+  | 'button'
+  | 'video'
+  | 'form'
+  | 'html'
+  | 'divider'
+  | 'spacer'
+
+export interface PageBlock {
+  id: string
+  type: PageBlockType
+  config: PageBlockConfig
+}
+
+export interface PageBlockConfig {
+  text?: string // heading (texto plano)
+  html?: string // text con formato inline (saneado) · bloque html (saneado)
+  level?: 1 | 2 | 3 // heading (jerarquía visual)
+  align?: 'left' | 'center' | 'right' // heading, text, image, button, video, form
+  image_url?: string // image
+  alt?: string // image
+  link_url?: string // image (opcional: la imagen enlaza)
+  label?: string // button, form (texto del botón)
+  url?: string // button (destino del CTA)
+  video_url?: string // video (YouTube/Vimeo)
+  form_id?: string // form (formulario de captura embebido)
+  form_slug?: string // form (slug para el enlace público, relativo al dominio)
+  height?: number // spacer (px)
+}
+
+export interface PageSectionConfig {
+  background_color?: string // '#rrggbb'; ausente = fondo de la página
+  padding?: number // padding vertical en px
+}
+
+export interface PageSection {
+  id: string
+  layout: SectionLayout
+  config: PageSectionConfig
+  columns: PageBlock[][] // un array de bloques por columna (longitud = nº columnas del layout)
+}
+
+export interface PageDesignStyles {
+  background_color: string // fondo de la página
+  button_color: string // botones y CTA
+  text_color: string // color base del texto
+}
+
+export interface PageDesign {
+  version: 1
+  styles: PageDesignStyles
+  sections: PageSection[]
+}
+
+export type VariantKey = 'A' | 'B'
+
+export interface FunnelStepVariant {
+  id: string
+  step_id: string
+  variant_key: VariantKey
+  design: PageDesign
+  created_at: string
+  updated_at: string
+}
+
+export interface FunnelDomain {
+  id: string
+  hostname: string
+  funnel_id: string
+  created_at: string
+}
+
+export type FunnelEventType = 'page_view' | 'cta_click' | 'form_submit'
+
+export interface FunnelEvent {
+  id: string
+  funnel_id: string
+  step_id: string
+  variant_id: string | null
+  visitor_id: string
+  type: FunnelEventType
+  metadata: Record<string, unknown>
+  created_at: string
+}

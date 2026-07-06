@@ -27,6 +27,16 @@
   reescribe). Saneadores sin dependencias en services/sanitize.ts (whitelist inline + limpieza raw).
   GOTCHAS nuevos en el PRP: toolbars flotantes tapan contenedores vacíos (usar barras estáticas);
   contentEditable pierde la selección si el toolbar no hace preventDefault en mousedown.
+- PRP-009 COMPLETADO (2026-07-06): FUNNELS tipo GHL — sección /funnels (Embudos): embudos con pasos,
+  editor visual de PÁGINAS web (mismo lenguaje secciones/columnas que el editor de emails; render
+  compartido editor↔público en page-render.tsx), páginas públicas /p/[funnel]/[paso] SSR,
+  MULTIDOMINIO vía Host-rewrite en proxy.ts → /sites/[host] (runbook DNS+EasyPanel en DEPLOY.md),
+  tracking (cookie tv_id, page_view dedupe/día, cta_click, form_submit vía /api/track), formulario
+  embebido (contacto+automatizaciones+salto de paso), test A/B (50/50 sticky por hash, declarar
+  ganadora conserva historial — FK set null, migración 0005), estadísticas con % paso a paso, y
+  generación por IA (ai@7 + OpenRouter, generateObject+Zod, degrada sin key). Migraciones 0004+0005.
+  sanitize.ts y RichTextInput MOVIDOS a shared/ (shims en marketing). Verificado E2E en browser.
+  PENDIENTE Tony: OPENROUTER_API_KEY (openrouter.ai/keys) para activar la IA.
 - PRP-007 COMPLETADO (2026-07-05): EMAIL MARKETING tipo GHL — sección /marketing (Estadísticas/Campañas/
   Plantillas), diseñador visual por bloques (una columna, sin librerías), campañas a todos/por etiquetas
   (ahora o programadas), cola idempotente por lotes (claim atómico, 25/cron + 10 inline), tracking de
@@ -51,4 +61,6 @@
 - Gotchas clave (detalle en ghl-titan-vision.md): acceso LAN → allowedDevOrigins + -H 0.0.0.0; limpiar .next tras mover
   archivos raíz (OOM); next-themes gatear todo tras `mounted`; Supabase relaciones embebidas → cast `as unknown as`.
 - Pendiente del usuario: verificar dominio Resend (emails a terceros), conectar Google Calendar (Meet por cita),
-  configurar cron para /api/cron/process-emails, deploy en VPS+dominio.
+  configurar cron para /api/cron/process-emails, deploy en VPS+dominio, OPENROUTER_API_KEY para la IA de funnels.
+- GOTCHA máquina compartida (detalle en prp-funnels.md): validar con `next start` (dev server muere por OOM),
+  browser Playwright en ráfagas cortas, y confirmar que el puerto sirve TU app (Docker de otros convive en 3000).

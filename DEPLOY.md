@@ -60,3 +60,28 @@ desde tu máquina (apunta a la misma Neon de producción) — no van dentro del 
 ## Crear/resetear el admin
 `node scripts/create-admin.js <email> <password>` (upsert por email). El registro público en
 `/signup` solo funciona mientras no exista ningún usuario (primera puesta en marcha).
+
+## Multidominio: dominios de cliente para funnels (PRP-009)
+
+GHL Titan sirve cada embudo desde el dominio propio de su cliente apoyándose en el sistema
+de dominios de EasyPanel (Traefik emite el SSL de forma automática). Runbook por dominio:
+
+1. **DNS** (proveedor del dominio del cliente): registro `A` del dominio (p. ej.
+   `ofertatrading.com`, o un subdominio con `CNAME`) apuntando a la **IP del VPS**.
+2. **EasyPanel**: servicio de GHL Titan → **Domains** → *Add Domain* → escribir el dominio
+   (HTTPS activado). Traefik pide el certificado Let's Encrypt solo.
+   - ⚠️ Si el DNS aún no ha propagado, la emisión del certificado falla: espera unos minutos
+     y vuelve a intentarlo (EasyPanel reintenta al re-guardar el dominio).
+3. **Titan**: panel → Embudos → (tu embudo) → **Dominios propios** → añadir el mismo dominio.
+
+Con eso, `https://dominio-del-cliente/` sirve el PRIMER paso del embudo y
+`https://dominio-del-cliente/<paso>` cada paso. El panel sigue viviendo SOLO en el dominio
+principal (`NEXT_PUBLIC_SITE_URL`). No hay límite de dominios: repite el runbook por cada uno.
+
+- Cómo funciona por dentro: `src/proxy.ts` detecta el header `Host`; si no es el dominio
+  principal (ni localhost/IP) reescribe internamente a `/sites/<host>/...`, que busca el
+  dominio en la tabla `funnel_domains`. Dominio no registrado → 404.
+- ⚠️ `NEXT_PUBLIC_SITE_URL` debe ser el dominio del PANEL. Las URLs públicas de los funnels
+  en dominios de cliente se generan relativas al propio dominio (nunca desde esa variable).
+- Prueba sin DNS (desde tu máquina): `curl -H "Host: dominio-del-cliente" https://IP-del-VPS/`
+  o añade el dominio a tu `/etc/hosts`.

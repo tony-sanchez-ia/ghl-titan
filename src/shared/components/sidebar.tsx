@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, Calendar, GraduationCap, Zap, Megaphone, Settings, LogOut } from 'lucide-react'
+import { LayoutDashboard, Users, Calendar, GraduationCap, Zap, Megaphone, Filter, Settings, LogOut } from 'lucide-react'
 import { ThemeToggle } from './theme-toggle'
 import { signout } from '@/actions/auth'
 
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: '/courses', label: 'Cursos', icon: GraduationCap },
   { href: '/automations', label: 'Automatizaciones', icon: Zap },
   { href: '/marketing', label: 'Marketing', icon: Megaphone },
+  { href: '/funnels', label: 'Embudos', icon: Filter },
   { href: '/settings', label: 'Ajustes', icon: Settings },
 ]
 
