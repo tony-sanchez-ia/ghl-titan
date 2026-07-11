@@ -248,10 +248,12 @@ async function executeSendEmail(node: AutomationNode, e: AutomationEnrollment) {
     return
   }
   const token = randomBytes(16).toString('hex')
+  // Modo diseñado: snapshot del diseño al encolar (se renderiza al enviar)
+  const designed = node.config.email_mode === 'designed' && node.config.design
   await query(
     `insert into scheduled_emails
-       (automation_id, node_id, enrollment_id, contact_id, to_email, subject, body, send_at, click_token)
-     values ($1, $2, $3, $4, $5, $6, $7, now(), $8)`,
+       (automation_id, node_id, enrollment_id, contact_id, to_email, subject, body, design, send_at, click_token)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, now(), $9)`,
     [
       node.automation_id,
       node.id,
@@ -259,7 +261,8 @@ async function executeSendEmail(node: AutomationNode, e: AutomationEnrollment) {
       e.contact_id,
       email,
       node.config.subject || '(sin asunto)',
-      node.config.body || '',
+      designed ? '' : node.config.body || '',
+      designed ? JSON.stringify(node.config.design) : null,
       token,
     ]
   )

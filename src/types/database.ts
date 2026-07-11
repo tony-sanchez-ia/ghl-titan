@@ -315,9 +315,13 @@ export interface AutomationNode {
   config: NodeConfig
   created_at: string
 }
+export type AutomationEmailMode = 'simple' | 'designed'
+
 export interface NodeConfig {
   subject?: string // send_email
-  body?: string // send_email
+  body?: string // send_email (modo simple)
+  email_mode?: AutomationEmailMode // send_email ('simple' por defecto)
+  design?: StoredEmailDesign // send_email (modo designed, formato V2 de marketing)
   delay_value?: number // wait
   delay_unit?: DelayUnit // wait
   tag?: string // add_tag
@@ -477,6 +481,7 @@ export interface ScheduledEmail {
   to_email: string
   subject: string
   body: string
+  design: StoredEmailDesign | null // diseño V2 (null = modo simple/texto)
   send_at: string
   status: ScheduledEmailStatus
   sent_at: string | null

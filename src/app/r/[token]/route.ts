@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { query, queryOne } from '@/lib/db'
 import { extractUrls } from '@/features/automations/services/email-engine'
+import { migrateDesign } from '@/features/marketing/services/design'
+import { extractDesignUrls } from '@/features/marketing/services/render'
 import { resolveBranch } from '@/features/automations/services/engine'
 import type { AutomationEnrollment, CampaignRecipient, ScheduledEmail } from '@/types/database'
 
@@ -26,8 +28,11 @@ export async function GET(
     return handleCampaignClick(request, token)
   }
 
-  // Destino validado contra las URLs reales del cuerpo (nunca redirect arbitrario)
-  const allowed = extractUrls(email.body)
+  // Destino validado contra las URLs reales del email (nunca redirect arbitrario):
+  // diseño V2 si lo hay, si no el cuerpo de texto
+  const allowed = email.design
+    ? extractDesignUrls(migrateDesign(email.design))
+    : extractUrls(email.body)
   const requested = new URL(request.url).searchParams.get('u')
   const destination = (requested && allowed.includes(requested) ? requested : allowed[0]) ?? null
 

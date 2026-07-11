@@ -118,9 +118,20 @@ export async function addNode(
   return { success: true, id: node!.id }
 }
 
+// Diseño V2 de email (validación laxa: lo produce nuestro propio editor)
+const emailDesignSchema = z
+  .object({
+    version: z.number(),
+    sections: z.array(z.unknown()),
+    styles: z.record(z.string(), z.unknown()),
+  })
+  .passthrough()
+
 const nodeConfigSchema = z.object({
   subject: z.string().trim().max(300).optional(),
   body: z.string().trim().max(8000).optional(),
+  email_mode: z.enum(['simple', 'designed']).optional(),
+  design: emailDesignSchema.optional(),
   delay_value: z.coerce.number().int().min(0).max(365).optional(),
   delay_unit: z.enum(['days', 'hours']).optional(),
   tag: z.string().trim().max(60).optional(),

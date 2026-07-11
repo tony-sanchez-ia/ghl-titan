@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Plus, Trash2, Mail, Clock, Tag, StickyNote, Split, Zap, FileInput, Calendar as CalendarIcon,
-  MousePointerClick, X,
+  MousePointerClick, X, Paintbrush,
 } from 'lucide-react'
 import { ui } from '@/shared/lib/ui'
 import {
@@ -290,7 +291,8 @@ function NodeCard({
   function summary(): string {
     const c = node.config
     switch (node.type) {
-      case 'send_email': return c.subject || '(sin asunto)'
+      case 'send_email':
+        return `${c.subject || '(sin asunto)'}${c.email_mode === 'designed' ? ' · diseñado' : ''}`
       case 'wait': return unitLabel(c.delay_value ?? 0, c.delay_unit)
       case 'add_tag': return c.tag ? `"${c.tag}"` : '(sin etiqueta)'
       case 'add_note': return c.note || '(sin texto)'
@@ -377,13 +379,48 @@ function NodeConfigForm({
         <>
           <div>
             <label className="block text-sm font-medium mb-1">Asunto</label>
-            <input value={config.subject ?? ''} onChange={(e) => set('subject', e.target.value)} className={ui.input} />
+            <input value={config.subject ?? ''} onChange={(e) => set('subject', e.target.value)} className={`${ui.input}`} placeholder="Admite {{nombre}}, {{apellido}} y {{email}}" />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Mensaje</label>
-            <textarea value={config.body ?? ''} onChange={(e) => set('body', e.target.value)} rows={5} className={ui.input} />
-            <p className="text-xs text-muted mt-1">Los enlaces del mensaje se rastrean automáticamente (clicks).</p>
+            <label className="block text-sm font-medium mb-1">Tipo de email</label>
+            <div className="flex items-center rounded-lg border border-border overflow-hidden w-fit text-sm">
+              <button
+                type="button"
+                onClick={() => set('email_mode', 'simple')}
+                className={`px-3 py-2 ${(config.email_mode ?? 'simple') === 'simple' ? 'bg-primary-soft text-primary font-medium' : 'text-muted'}`}
+              >
+                Sencillo (texto)
+              </button>
+              <button
+                type="button"
+                onClick={() => set('email_mode', 'designed')}
+                className={`px-3 py-2 ${config.email_mode === 'designed' ? 'bg-primary-soft text-primary font-medium' : 'text-muted'}`}
+              >
+                Diseñado (visual)
+              </button>
+            </div>
           </div>
+          {config.email_mode === 'designed' ? (
+            <div className="rounded-lg border border-border bg-bg p-3 space-y-2">
+              <p className="text-sm text-muted">
+                {config.design
+                  ? 'Este paso envía un email con diseño visual.'
+                  : 'Todavía no hay diseño: guarda el paso y ábrelo en el diseñador.'}
+              </p>
+              <Link
+                href={`/automations/${workflowId}/email/${node.id}`}
+                className={`${ui.buttonPrimary} px-3 py-2 text-sm inline-flex`}
+              >
+                <Paintbrush size={15} /> Abrir el diseñador
+              </Link>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium mb-1">Mensaje</label>
+              <textarea value={config.body ?? ''} onChange={(e) => set('body', e.target.value)} rows={5} className={ui.input} />
+              <p className="text-xs text-muted mt-1">Los enlaces del mensaje se rastrean automáticamente (clicks).</p>
+            </div>
+          )}
         </>
       )}
       {(node.type === 'wait' || node.type === 'branch_email_click') && (
