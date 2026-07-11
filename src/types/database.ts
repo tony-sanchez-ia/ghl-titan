@@ -107,6 +107,8 @@ export interface Quiz {
   passing: boolean
 }
 
+export type CourseAccessMode = 'open' | 'invite'
+
 export interface Course {
   id: string
   slug: string
@@ -114,6 +116,7 @@ export interface Course {
   description: string | null
   cover_image_url: string | null
   status: CourseStatus
+  access_mode: CourseAccessMode
   created_at: string
   updated_at: string
 }
@@ -145,6 +148,7 @@ export interface CourseEnrollment {
   contact_id: string | null
   name: string
   email: string
+  access_token: string | null
   created_at: string
 }
 

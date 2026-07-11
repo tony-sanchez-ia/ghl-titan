@@ -30,6 +30,7 @@ export default async function LearnPage({ params }: { params: Promise<{ slug: st
         title={course.title}
         description={course.description}
         coverUrl={course.cover_image_url}
+        inviteOnly={course.access_mode === 'invite'}
       />
     )
   }

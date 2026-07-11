@@ -1,10 +1,27 @@
 'use server'
 
+import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { cookies } from 'next/headers'
 import { z } from 'zod'
 import { query, queryOne } from '@/lib/db'
 import type { LessonType, Quiz } from '@/types/database'
+
+/** Vincula o crea el contacto por email (dedup, igual que reservas/forms). */
+async function linkOrCreateContact(name: string, email: string): Promise<string | null> {
+  const found = await queryOne<{ id: string }>(
+    'select id from contacts where email ilike $1 limit 1',
+    [email]
+  )
+  if (found) return found.id
+  const [firstName, ...rest] = name.trim().split(' ')
+  const created = await queryOne<{ id: string }>(
+    `insert into contacts (first_name, last_name, email, source, last_activity_at)
+     values ($1, $2, $3, 'course', now()) returning id`,
+    [firstName, rest.join(' ') || null, email]
+  )
+  return created?.id ?? null
+}
 
 function slugify(s: string): string {
   return s
@@ -30,6 +47,7 @@ const courseSchema = z.object({
   slug: z.string().trim().max(60).optional(),
   description: z.string().trim().max(4000).optional().nullable(),
   cover_image_url: z.string().trim().max(800).optional().nullable(),
+  access_mode: z.enum(['open', 'invite']).default('open'),
 })
 
 export async function createCourse(formData: FormData) {
@@ -38,18 +56,20 @@ export async function createCourse(formData: FormData) {
     slug: formData.get('slug'),
     description: formData.get('description'),
     cover_image_url: formData.get('cover_image_url'),
+    access_mode: formData.get('access_mode') ?? 'open',
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }
   const d = parsed.data
   try {
     const data = await queryOne<{ id: string }>(
-      `insert into courses (title, slug, description, cover_image_url)
-       values ($1, $2, $3, $4) returning id`,
+      `insert into courses (title, slug, description, cover_image_url, access_mode)
+       values ($1, $2, $3, $4, $5) returning id`,
       [
         d.title,
         d.slug ? slugify(d.slug) : slugify(d.title),
         d.description || null,
         d.cover_image_url || null,
+        d.access_mode,
       ]
     )
     revalidatePath('/courses')
@@ -66,15 +86,23 @@ export async function updateCourse(id: string, formData: FormData) {
     slug: formData.get('slug'),
     description: formData.get('description'),
     cover_image_url: formData.get('cover_image_url'),
+    access_mode: formData.get('access_mode') ?? 'open',
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }
   const d = parsed.data
   try {
     await query(
       `update courses set title = $1, description = $2, cover_image_url = $3,
-         slug = coalesce($4, slug), updated_at = now()
-       where id = $5`,
-      [d.title, d.description || null, d.cover_image_url || null, d.slug ? slugify(d.slug) : null, id]
+         slug = coalesce($4, slug), access_mode = $5, updated_at = now()
+       where id = $6`,
+      [
+        d.title,
+        d.description || null,
+        d.cover_image_url || null,
+        d.slug ? slugify(d.slug) : null,
+        d.access_mode,
+        id,
+      ]
     )
   } catch (err) {
     if (isUniqueViolation(err)) return { error: 'Ya existe un curso con ese enlace (slug)' }
@@ -220,29 +248,11 @@ export async function enrollStudent(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }
   const { slug, name, email } = parsed.data
 
-  const course = await queryOne<{ id: string }>(
-    `select id from courses where slug = $1 and status = 'published'`,
+  const course = await queryOne<{ id: string; access_mode: string }>(
+    `select id, access_mode from courses where slug = $1 and status = 'published'`,
     [slug]
   )
   if (!course) return { error: 'Curso no encontrado' }
-
-  // Vincula/crea contacto por email (igual que las reservas)
-  let contactId: string | null = null
-  const foundContact = await queryOne<{ id: string }>(
-    'select id from contacts where email ilike $1 limit 1',
-    [email]
-  )
-  if (foundContact) {
-    contactId = foundContact.id
-  } else {
-    const [firstName, ...rest] = name.trim().split(' ')
-    const nc = await queryOne<{ id: string }>(
-      `insert into contacts (first_name, last_name, email, source, last_activity_at)
-       values ($1, $2, $3, 'course', now()) returning id`,
-      [firstName, rest.join(' ') || null, email]
-    )
-    contactId = nc?.id ?? null
-  }
 
   // Crea/recupera enrollment (unique course_id+email)
   const existing = await queryOne<{ id: string }>(
@@ -250,11 +260,17 @@ export async function enrollStudent(formData: FormData) {
     [course.id, email]
   )
 
+  // Solo invitados: sin enrollment previo no hay inscripción libre
+  if (!existing && course.access_mode === 'invite') {
+    return { error: 'Este curso es solo por invitación. Pide tu enlace de acceso.' }
+  }
+
   if (!existing) {
+    const contactId = await linkOrCreateContact(name, email)
     await query(
-      `insert into course_enrollments (course_id, contact_id, name, email)
-       values ($1, $2, $3, $4)`,
-      [course.id, contactId, name, email]
+      `insert into course_enrollments (course_id, contact_id, name, email, access_token)
+       values ($1, $2, $3, $4, $5)`,
+      [course.id, contactId, name, email, randomBytes(16).toString('hex')]
     )
     if (contactId) {
       await query(
@@ -298,5 +314,60 @@ export async function markLessonComplete(slug: string, lessonId: string) {
   )
 
   revalidatePath(`/learn/${slug}`)
+  return { success: true }
+}
+
+// ─── Alumnos (admin) ─────────────────────────────────────────────────────────
+const studentSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre es obligatorio').max(160),
+  email: z.string().trim().email('Email inválido'),
+})
+
+/** [admin] Añade un alumno al curso y devuelve su enlace de acceso personal. */
+export async function addStudent(courseId: string, formData: FormData) {
+  const parsed = studentSchema.safeParse({
+    name: formData.get('name'),
+    email: formData.get('email'),
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }
+  const { name, email } = parsed.data
+
+  const course = await queryOne<{ id: string }>('select id from courses where id = $1', [courseId])
+  if (!course) return { error: 'Curso no encontrado' }
+
+  const existing = await queryOne<{ id: string }>(
+    'select id from course_enrollments where course_id = $1 and email ilike $2',
+    [courseId, email]
+  )
+  if (existing) return { error: 'Ese email ya es alumno de este curso' }
+
+  const contactId = await linkOrCreateContact(name, email)
+  await query(
+    `insert into course_enrollments (course_id, contact_id, name, email, access_token)
+     values ($1, $2, $3, $4, $5)`,
+    [courseId, contactId, name, email, randomBytes(16).toString('hex')]
+  )
+  if (contactId) {
+    await query(
+      `insert into contact_activities (contact_id, type, description, metadata)
+       values ($1, 'note', 'Añadido como alumno de un curso', $2)`,
+      [contactId, { course_id: courseId }]
+    )
+  }
+
+  revalidatePath(`/courses/${courseId}`)
+  return { success: true }
+}
+
+/** [admin] Quita el acceso de un alumno (borra inscripción y su progreso). */
+export async function removeStudent(
+  enrollmentId: string,
+  courseId: string
+): Promise<{ success?: boolean; error?: string }> {
+  await query('delete from course_enrollments where id = $1 and course_id = $2', [
+    enrollmentId,
+    courseId,
+  ])
+  revalidatePath(`/courses/${courseId}`)
   return { success: true }
 }

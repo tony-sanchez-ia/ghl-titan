@@ -54,6 +54,13 @@ export function CourseForm({ course }: { course?: Course }) {
         <label htmlFor="cover_image_url" className="block text-sm font-medium mb-1">URL de portada</label>
         <input id="cover_image_url" name="cover_image_url" defaultValue={course?.cover_image_url ?? ''} className={ui.input} placeholder="https://..." />
       </div>
+      <div>
+        <label htmlFor="access_mode" className="block text-sm font-medium mb-1">Acceso al curso</label>
+        <select id="access_mode" name="access_mode" defaultValue={course?.access_mode ?? 'open'} className={ui.input}>
+          <option value="open">Libre — cualquiera con el enlace puede apuntarse</option>
+          <option value="invite">Solo invitados — únicamente los alumnos que tú añadas</option>
+        </select>
+      </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
       {msg && <p className="text-sm text-emerald-600">{msg}</p>}
       <div className="flex gap-3">

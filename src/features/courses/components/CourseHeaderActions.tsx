@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Copy, Check, ExternalLink, Trash2 } from 'lucide-react'
 import { ui } from '@/shared/lib/ui'
+import { copyText } from '@/shared/lib/clipboard'
 import { setCourseStatus, deleteCourse } from '@/actions/courses'
 import type { Course } from '@/types/database'
 
@@ -21,7 +22,7 @@ export function CourseHeaderActions({ course }: { course: Course }) {
     router.refresh()
   }
   async function copy() {
-    await navigator.clipboard.writeText(`${window.location.origin}/learn/${course.slug}`)
+    if (!(await copyText(`${window.location.origin}/learn/${course.slug}`))) return
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -38,8 +39,12 @@ export function CourseHeaderActions({ course }: { course: Course }) {
       <span className={`text-xs px-2 py-1 rounded-full ${published ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-bg text-muted'}`}>
         {published ? 'Publicado' : 'Borrador'}
       </span>
-      <button onClick={togglePublish} disabled={busy} className={`${ui.button} px-3 py-2 text-sm disabled:opacity-50`}>
-        {published ? 'Despublicar' : 'Publicar'}
+      <button
+        onClick={togglePublish}
+        disabled={busy}
+        className={`${published ? ui.button : ui.buttonPrimary} px-3 py-2 text-sm disabled:opacity-50`}
+      >
+        {published ? 'Despublicar' : 'Publicar curso'}
       </button>
       <button onClick={copy} className={`${ui.button} px-3 py-2 text-sm`}>
         {copied ? <Check size={16} /> : <Copy size={16} />} {copied ? 'Copiado' : 'Copiar enlace'}

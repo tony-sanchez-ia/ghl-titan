@@ -122,3 +122,25 @@ export async function getEnrollment(
 export function publishedLessonIds(course: CourseWithContent): string[] {
   return course.modules.flatMap((m) => m.lessons.map((l) => l.id))
 }
+
+export interface StudentRow extends CourseEnrollment {
+  completedCount: number
+}
+
+/** [admin] Alumnos del curso con lecciones completadas (sobre las publicadas). */
+export async function listStudents(courseId: string): Promise<StudentRow[]> {
+  const rows = await query<CourseEnrollment & { completed_count: string }>(
+    `select e.*,
+       (select count(*) from course_lesson_progress p
+          join course_lessons l on l.id = p.lesson_id and l.is_published
+        where p.enrollment_id = e.id) as completed_count
+     from course_enrollments e
+     where e.course_id = $1
+     order by e.created_at desc`,
+    [courseId]
+  )
+  return rows.map(({ completed_count, ...e }) => ({
+    ...e,
+    completedCount: Number(completed_count),
+  }))
+}

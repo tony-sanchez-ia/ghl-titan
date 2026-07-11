@@ -10,11 +10,13 @@ export function EnrollGate({
   title,
   description,
   coverUrl,
+  inviteOnly = false,
 }: {
   slug: string
   title: string
   description: string | null
   coverUrl: string | null
+  inviteOnly?: boolean
 }) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
@@ -43,6 +45,12 @@ export function EnrollGate({
         <div className="p-8">
           <h1 className="text-2xl font-bold">{title}</h1>
           {description && <p className="text-muted mt-2 text-sm">{description}</p>}
+          {inviteOnly ? (
+            <p className="mt-6 text-sm text-muted rounded-lg border border-border bg-bg p-4">
+              Este curso es <strong className="text-fg">solo por invitación</strong>. Si eres
+              alumno, entra con el enlace de acceso personal que te han enviado.
+            </p>
+          ) : (
           <form action={handleSubmit} className="mt-6 space-y-4">
             <div>
               <label htmlFor="name" className="block text-sm font-medium mb-1">Tu nombre</label>
@@ -57,6 +65,7 @@ export function EnrollGate({
               {loading ? 'Accediendo...' : 'Acceder al curso'}
             </button>
           </form>
+          )}
         </div>
       </div>
     </div>
