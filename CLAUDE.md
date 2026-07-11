@@ -493,6 +493,12 @@ npm run lint         # ESLint
 - **Fix**: parar el dev server antes de limpiar la cache, o reiniciarlo justo despues.
 - **Aplicar en**: Todos los proyectos
 
+### 2026-07-11: typecheck/lint en Next 16
+- **Error**: `npm run typecheck` no existe en este proyecto y `npm run lint` (next lint)
+  esta roto (Next 16 elimino el comando).
+- **Fix**: verificar tipos con `npx tsc --noEmit`.
+- **Aplicar en**: todos los proyectos con Next 16.
+
 ---
 
 *V4: Todo es un Skill. Agent-First. El usuario habla, tu construyes.*

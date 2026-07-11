@@ -37,17 +37,20 @@
   generación por IA (ai@7 + OpenRouter, generateObject+Zod, degrada sin key). Migraciones 0004+0005.
   sanitize.ts y RichTextInput MOVIDOS a shared/ (shims en marketing). Verificado E2E en browser.
   PENDIENTE Tony: OPENROUTER_API_KEY (openrouter.ai/keys) para activar la IA.
-- PRP-010 APROBADO, EN ESPERA (2026-07-10): Outlook free/busy vía Microsoft Graph — enlazar cuenta
-  Microsoft desde Ajustes con DEVICE CODE FLOW (el flujo clásico con redirect NO funciona desde la LAN:
-  Azure solo permite http en localhost), elegir calendario a consultar (calendarView del calendario
-  elegido, NO getSchedule que no soporta cuentas personales), y bloquear huecos ocupados en /book +
-  revalidación + reprogramar. Solo LECTURA (escribir en Google Calendar sigue siendo otro PRP pendiente).
-  Decisión Tony: eventos "provisionales" (tentative) NO bloquean, solo busy+oof. Fail-open si Graph falla.
-  PRP en `.claude/PRPs/prp-outlook-freebusy.md`. ⚠️ NO EJECUTAR hasta aviso de Tony (otro agente está
-  programando otra feature en paralelo en este repo). Requiere de Tony: app registration en Azure
-  (public client, sin secret) → MICROSOFT_CLIENT_ID en .env.local.
-  ⚠️ COORDINACIÓN: su migración se renumeró a `0007_outlook_integration.sql` porque el `0006` lo tomó
-  (y ya aplicó) el Form Builder (PRP-011). El nº de PRP 010 se conserva para Outlook; el Form Builder es PRP-011.
+- PRP-010 IMPLEMENTADO (2026-07-11): Outlook free/busy vía Microsoft Graph — card Integraciones en
+  Ajustes con DEVICE CODE FLOW (el flujo clásico con redirect NO funciona desde la LAN: Azure solo
+  permite http en localhost; código corto + microsoft.com/devicelogin + polling), selector del
+  calendario a consultar (calendarView del calendario elegido, NO getSchedule que no soporta cuentas
+  personales), y busy de Outlook fusionado ANTES de generateSlots en los 3 puntos: page /book,
+  createPublicBooking y getRescheduleSlots (NO en getPublicCalendarBySlug: la llama también
+  generateMetadata y duplicaría la llamada a Graph). Solo LECTURA (escribir en Google Calendar sigue
+  siendo otro PRP pendiente). Decisión Tony: tentative NO bloquea, solo busy+oof. Fail-open si Graph
+  falla (timeout 5s). Tokens: refresh cifrado AES-256-GCM (clave derivada de AUTH_SECRET) en tabla
+  integration_connections (migración 0007, aplicada); refresh ROTA en cada uso. Feature en
+  src/features/integrations/ + src/actions/integrations.ts. Verificado E2E con next start: card OK,
+  error amable sin client ID, /book genera huecos sin conexión. PENDIENTE Tony: app registration en
+  Azure (public client, "Allow public client flows"=Yes, sin secret) → MICROSOFT_CLIENT_ID en
+  .env.local → enlace real + prueba con evento ocupado real. PRP: prp-outlook-freebusy.md.
 - PRP-011 COMPLETADO (2026-07-10): EDITOR DE FORMULARIOS tipo GHL — apartado Web (sidebar agrupa
   Embudos + Formularios). Sección /forms: editor visual con paleta de campos tipados (texto, email,
   teléfono, número, fecha, desplegable, opción única, selección múltiple, consentimiento, título/
@@ -88,6 +91,11 @@
 - Gotchas clave (detalle en ghl-titan-vision.md): acceso LAN → allowedDevOrigins + -H 0.0.0.0; limpiar .next tras mover
   archivos raíz (OOM); next-themes gatear todo tras `mounted`; Supabase relaciones embebidas → cast `as unknown as`.
 - Pendiente del usuario: verificar dominio Resend (emails a terceros), conectar Google Calendar (Meet por cita),
-  configurar cron para /api/cron/process-emails, deploy en VPS+dominio, OPENROUTER_API_KEY para la IA de funnels.
+  configurar cron para /api/cron/process-emails, deploy en VPS+dominio, OPENROUTER_API_KEY para la IA de funnels,
+  app Azure para Outlook free/busy (MICROSOFT_CLIENT_ID) + enlazar desde Ajustes.
 - GOTCHA máquina compartida (detalle en prp-funnels.md): validar con `next start` (dev server muere por OOM),
   browser Playwright en ráfagas cortas, y confirmar que el puerto sirve TU app (Docker de otros convive en 3000).
+- GOTCHA checks: `npm run typecheck` NO existe y `npm run lint` está roto (Next 16 quitó next lint) →
+  usar `npx tsc --noEmit`. Si el Playwright MCP está "already in use" (otro agente): script Node con el
+  playwright del caché npx (~/.npm/_npx/*/node_modules) + executablePath a un chromium_headless_shell
+  de ~/.cache/ms-playwright (detalle en prp-outlook-freebusy.md).

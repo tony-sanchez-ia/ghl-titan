@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { getPublicCalendarBySlug } from '@/features/scheduling/services/calendars'
 import { generateSlots } from '@/features/scheduling/services/availability'
+import { getOutlookBusyIntervals } from '@/features/integrations/services/outlook-freebusy'
 import { BookingFlow } from '@/features/scheduling/components/BookingFlow'
 
 export const dynamic = 'force-dynamic'
@@ -25,7 +26,9 @@ export default async function PublicBookingPage({
   const data = await getPublicCalendarBySlug(slug)
   if (!data) notFound()
 
-  const days = generateSlots(data.calendar, data.availability, data.bookings)
+  // Los eventos ocupados de Outlook bloquean huecos igual que las citas propias
+  const outlookBusy = await getOutlookBusyIntervals(data.calendar.window_days)
+  const days = generateSlots(data.calendar, data.availability, [...data.bookings, ...outlookBusy])
 
   return (
     <div className="min-h-screen py-10 px-4">

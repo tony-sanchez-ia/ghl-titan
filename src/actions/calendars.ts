@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { query, queryOne } from '@/lib/db'
 import { generateSlots } from '@/features/scheduling/services/availability'
+import { getOutlookBusyIntervals } from '@/features/integrations/services/outlook-freebusy'
 import { sendBookingEmails } from '@/features/notifications/services/booking-emails'
 import { fireTrigger } from '@/features/automations/services/engine'
 import { processDueEmails } from '@/features/automations/services/email-engine'
@@ -193,7 +194,7 @@ export async function createPublicBooking(formData: FormData) {
   )
   if (!calendar) return { error: 'Calendario no encontrado' }
 
-  const [availability, existing] = await Promise.all([
+  const [availability, existing, outlookBusy] = await Promise.all([
     query<CalendarAvailability>(
       'select * from calendar_availability where calendar_id = $1',
       [calendar.id]
@@ -203,10 +204,11 @@ export async function createPublicBooking(formData: FormData) {
        where calendar_id = $1 and status = 'confirmed' and starts_at >= now()`,
       [calendar.id]
     ),
+    getOutlookBusyIntervals(calendar.window_days),
   ])
 
-  // Revalida que el hueco siga siendo válido y libre.
-  const days = generateSlots(calendar, availability, existing)
+  // Revalida que el hueco siga siendo válido y libre (incluye ocupado de Outlook).
+  const days = generateSlots(calendar, availability, [...existing, ...outlookBusy])
   const isValidSlot = days.some((d) => d.slots.some((s) => s.iso === slotIso))
   if (!isValidSlot) {
     return { error: 'Ese horario ya no está disponible. Elige otro, por favor.' }
@@ -346,7 +348,7 @@ export async function getRescheduleSlots(bookingId: string) {
   ])
   if (!calendar) return { error: 'Calendario no encontrado' }
 
-  const [availability, others] = await Promise.all([
+  const [availability, others, outlookBusy] = await Promise.all([
     query<CalendarAvailability>(
       'select * from calendar_availability where calendar_id = $1',
       [booking.calendar_id]
@@ -356,9 +358,10 @@ export async function getRescheduleSlots(bookingId: string) {
        where calendar_id = $1 and status = 'confirmed' and id <> $2 and starts_at >= now()`,
       [booking.calendar_id, bookingId]
     ),
+    getOutlookBusyIntervals(calendar.window_days),
   ])
 
-  const days = generateSlots(calendar, availability, others)
+  const days = generateSlots(calendar, availability, [...others, ...outlookBusy])
   return { success: true, days }
 }
 

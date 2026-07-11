@@ -2,15 +2,20 @@ import { queryOne } from '@/lib/db'
 import { getSession } from '@/lib/auth/session'
 import { ProfileForm } from '@/features/settings/components/ProfileForm'
 import { PasswordForm } from '@/features/settings/components/PasswordForm'
+import { OutlookConnectionCard } from '@/features/integrations/components/OutlookConnectionCard'
+import { getOutlookConnection } from '@/features/integrations/services/outlook-auth'
 
 export default async function SettingsPage() {
   const session = await getSession()
-  const user = session
-    ? await queryOne<{ full_name: string | null; email: string }>(
-        'select full_name, email from users where id = $1',
-        [session.sub]
-      )
-    : null
+  const [user, outlook] = await Promise.all([
+    session
+      ? queryOne<{ full_name: string | null; email: string }>(
+          'select full_name, email from users where id = $1',
+          [session.sub]
+        )
+      : Promise.resolve(null),
+    getOutlookConnection(),
+  ])
 
   return (
     <div className="space-y-6">
@@ -21,6 +26,7 @@ export default async function SettingsPage() {
 
       <ProfileForm fullName={user?.full_name ?? null} email={user?.email ?? ''} />
       <PasswordForm />
+      <OutlookConnectionCard connection={outlook} />
     </div>
   )
 }

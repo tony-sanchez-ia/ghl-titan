@@ -598,3 +598,21 @@ export interface FunnelEvent {
   metadata: Record<string, unknown>
   created_at: string
 }
+
+// ─── Integraciones (PRP-010) ─────────────────────────────────────────────────
+
+export type IntegrationStatus = 'connected' | 'reauth_required'
+
+export interface IntegrationConnection {
+  id: string
+  provider: string
+  account_email: string | null
+  refresh_token_enc: string
+  access_token: string | null
+  access_token_expires_at: string | null
+  calendar_id: string | null
+  calendar_name: string | null
+  status: IntegrationStatus
+  connected_at: string
+  updated_at: string
+}
