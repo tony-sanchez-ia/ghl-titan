@@ -1,10 +1,10 @@
 import Link from 'next/link'
-import { Plus, Zap, FileInput, Mail } from 'lucide-react'
+import { Plus, Zap, Mail } from 'lucide-react'
 import { ui } from '@/shared/lib/ui'
-import { listForms, listAutomations } from '@/features/automations/services/queries'
+import { listAutomations } from '@/features/automations/services/queries'
 
 export default async function AutomationsPage() {
-  const [forms, automations] = await Promise.all([listForms(), listAutomations()])
+  const automations = await listAutomations()
 
   return (
     <div className="space-y-8">
@@ -51,27 +51,12 @@ export default async function AutomationsPage() {
         )}
       </section>
 
-      {/* Formularios */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold flex items-center gap-2"><FileInput size={18} /> Formularios</h2>
-          <Link href="/automations/forms/new" className={`${ui.button} px-3 py-2 text-sm`}>
-            <Plus size={16} /> Nuevo formulario
-          </Link>
-        </div>
-        {forms.length === 0 ? (
-          <div className={`${ui.card} p-8 text-center text-muted`}>Aún no tienes formularios.</div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {forms.map((f) => (
-              <Link key={f.id} href={`/automations/forms/${f.id}`} className={`${ui.card} p-5 hover:border-primary transition-colors`}>
-                <h3 className="font-semibold">{f.name}</h3>
-                <p className="text-sm text-muted mt-1">/form/{f.slug}</p>
-              </Link>
-            ))}
-          </div>
-        )}
-      </section>
+      <div className={`${ui.card} p-4 text-sm text-muted`}>
+        Los <strong className="text-fg">formularios</strong> de captación ahora viven en{' '}
+        <Link href="/forms" className="text-primary hover:underline">Web → Formularios</Link>. Desde
+        el editor de cada formulario puedes vincularlo a una secuencia, o elígelo como disparador al
+        crear una secuencia.
+      </div>
     </div>
   )
 }

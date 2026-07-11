@@ -2,23 +2,49 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, Calendar, GraduationCap, Zap, Megaphone, Filter, Settings, LogOut } from 'lucide-react'
+import { LayoutDashboard, Users, Calendar, GraduationCap, Zap, Megaphone, Filter, FileText, Settings, LogOut } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { ThemeToggle } from './theme-toggle'
 import { signout } from '@/actions/auth'
 
-const NAV_ITEMS = [
+type NavItem = { href: string; label: string; icon: LucideIcon }
+
+const NAV_MAIN: NavItem[] = [
   { href: '/dashboard', label: 'Inicio', icon: LayoutDashboard },
   { href: '/contacts', label: 'Contactos', icon: Users },
   { href: '/calendars', label: 'Agenda', icon: Calendar },
   { href: '/courses', label: 'Cursos', icon: GraduationCap },
   { href: '/automations', label: 'Automatizaciones', icon: Zap },
   { href: '/marketing', label: 'Marketing', icon: Megaphone },
-  { href: '/funnels', label: 'Embudos', icon: Filter },
-  { href: '/settings', label: 'Ajustes', icon: Settings },
 ]
+
+// Apartado "Web": todo lo que se publica de cara al público
+const NAV_WEB: NavItem[] = [
+  { href: '/funnels', label: 'Embudos', icon: Filter },
+  { href: '/forms', label: 'Formularios', icon: FileText },
+]
+
+const NAV_TAIL: NavItem[] = [{ href: '/settings', label: 'Ajustes', icon: Settings }]
 
 export function Sidebar() {
   const pathname = usePathname()
+
+  const renderItem = (item: NavItem) => {
+    const Icon = item.icon
+    const active = pathname.startsWith(item.href)
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+          active ? 'bg-primary-soft text-primary' : 'text-muted hover:text-fg hover:bg-bg'
+        }`}
+      >
+        <Icon size={18} />
+        <span>{item.label}</span>
+      </Link>
+    )
+  }
 
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-64 bg-card border-r border-border flex flex-col">
@@ -29,25 +55,13 @@ export function Sidebar() {
         <p className="text-muted text-xs mt-0.5">Titanic Factory</p>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        {NAV_ITEMS.map((item) => {
-          const Icon = item.icon
-          const active = pathname.startsWith(item.href)
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                active
-                  ? 'bg-primary-soft text-primary'
-                  : 'text-muted hover:text-fg hover:bg-bg'
-              }`}
-            >
-              <Icon size={18} />
-              <span>{item.label}</span>
-            </Link>
-          )
-        })}
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        {NAV_MAIN.map(renderItem)}
+
+        <p className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted/70">Web</p>
+        {NAV_WEB.map(renderItem)}
+
+        <div className="pt-4">{NAV_TAIL.map(renderItem)}</div>
       </nav>
 
       <div className="px-3 py-4 border-t border-border space-y-2">

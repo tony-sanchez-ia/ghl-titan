@@ -4,7 +4,7 @@ import { SESSION_COOKIE, verifySessionToken } from '@/lib/auth/jwt'
 /** Primeros segmentos de ruta que NUNCA son un paso de funnel en dominio propio. */
 const RESERVED_SEGMENTS = new Set([
   'api', 'login', 'signup', 'dashboard', 'contacts', 'calendars', 'courses',
-  'automations', 'marketing', 'funnels', 'settings', 'book', 'form', 'learn',
+  'automations', 'marketing', 'funnels', 'forms', 'settings', 'book', 'form', 'learn',
   'unsubscribe', 'p', 'r', 'e', 'sites',
 ])
 
@@ -75,6 +75,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/automations') ||
     pathname.startsWith('/marketing') ||
     pathname.startsWith('/funnels') ||
+    pathname.startsWith('/forms') ||
     pathname.startsWith('/settings')
   const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/signup')
 

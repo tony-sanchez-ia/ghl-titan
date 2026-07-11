@@ -37,6 +37,33 @@
   generación por IA (ai@7 + OpenRouter, generateObject+Zod, degrada sin key). Migraciones 0004+0005.
   sanitize.ts y RichTextInput MOVIDOS a shared/ (shims en marketing). Verificado E2E en browser.
   PENDIENTE Tony: OPENROUTER_API_KEY (openrouter.ai/keys) para activar la IA.
+- PRP-010 APROBADO, EN ESPERA (2026-07-10): Outlook free/busy vía Microsoft Graph — enlazar cuenta
+  Microsoft desde Ajustes con DEVICE CODE FLOW (el flujo clásico con redirect NO funciona desde la LAN:
+  Azure solo permite http en localhost), elegir calendario a consultar (calendarView del calendario
+  elegido, NO getSchedule que no soporta cuentas personales), y bloquear huecos ocupados en /book +
+  revalidación + reprogramar. Solo LECTURA (escribir en Google Calendar sigue siendo otro PRP pendiente).
+  Decisión Tony: eventos "provisionales" (tentative) NO bloquean, solo busy+oof. Fail-open si Graph falla.
+  PRP en `.claude/PRPs/prp-outlook-freebusy.md`. ⚠️ NO EJECUTAR hasta aviso de Tony (otro agente está
+  programando otra feature en paralelo en este repo). Requiere de Tony: app registration en Azure
+  (public client, sin secret) → MICROSOFT_CLIENT_ID en .env.local.
+  ⚠️ COORDINACIÓN: su migración se renumeró a `0007_outlook_integration.sql` porque el `0006` lo tomó
+  (y ya aplicó) el Form Builder (PRP-011). El nº de PRP 010 se conserva para Outlook; el Form Builder es PRP-011.
+- PRP-011 COMPLETADO (2026-07-10): EDITOR DE FORMULARIOS tipo GHL — apartado Web (sidebar agrupa
+  Embudos + Formularios). Sección /forms: editor visual con paleta de campos tipados (texto, email,
+  teléfono, número, fecha, desplegable, opción única, selección múltiple, consentimiento, título/
+  párrafo, oculto), ancho completo/media columna, panel Estilos (temas + colores/bordes en vivo),
+  "Al enviar" (mensaje con formato o redirección + etiquetas + vincular automatización vía el trigger
+  form_submitted existente), Integrar (enlace + iframe inline auto-alto + popup con disparadores),
+  Envíos y Análisis (vistas únicas/día, envíos, % conversión). Se EXTENDIÓ la tabla `forms` (schema/
+  styles/settings jsonb + status; migración 0006) en vez de crear otra → automatizaciones, funnels y
+  emails siguen apuntando al mismo form (backfill del form demo). Motor submitForm reutiliza el patrón de
+  submitPublicForm (dedup por email + activity + fireTrigger). Tablas nuevas: form_submissions, form_events.
+  Loader público en `public/titan-forms.js` (NO bajo /forms, que es ruta protegida). Feature en
+  src/features/forms/ + src/actions/forms.ts. Verificado E2E real (crear→estilar→publicar→enviar desde
+  iframe CROSS-ORIGIN con auto-alto→contacto+etiqueta+timeline+envío+análisis 1/1/100%; datos de prueba
+  limpiados). Retirado el CRUD viejo de forms de /automations (redirige a /forms). GOTCHAS en el PRP:
+  /forms protegido en proxy → el loader va a la raíz pública; visitor id en localStorage (no cookie, para
+  iframes de terceros); email siempre requerido (clave de dedup). Sin pendientes de Tony.
 - PRP-007 COMPLETADO (2026-07-05): EMAIL MARKETING tipo GHL — sección /marketing (Estadísticas/Campañas/
   Plantillas), diseñador visual por bloques (una columna, sin librerías), campañas a todos/por etiquetas
   (ahora o programadas), cola idempotente por lotes (claim atómico, 25/cron + 10 inline), tracking de

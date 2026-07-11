@@ -6,18 +6,11 @@ import type {
   AutomationTriggerDef,
 } from '@/types/database'
 
-// ─── Formularios ─────────────────────────────────────────────────────────────
+// ─── Formularios (solo lectura ligera para selectores de disparador/bloque) ───
+// La gestión completa vive en features/forms (PRP-011). Aquí solo se listan
+// id/name/slug para los pickers de automatizaciones, emails y funnels.
 export async function listForms(): Promise<Form[]> {
   return query<Form>('select * from forms order by created_at desc')
-}
-
-export async function getFormById(id: string): Promise<Form | null> {
-  return queryOne<Form>('select * from forms where id = $1', [id])
-}
-
-/** [público] Formulario por slug. */
-export async function getPublicFormBySlug(slug: string): Promise<Form | null> {
-  return queryOne<Form>('select * from forms where slug = $1', [slug])
 }
 
 // ─── Automatizaciones ──────────────────────────────────────────────────────────

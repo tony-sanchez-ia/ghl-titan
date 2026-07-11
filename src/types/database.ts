@@ -155,13 +155,120 @@ export interface CourseLessonProgress {
   completed_at: string
 }
 
+// ── Formularios (Form Builder — PRP-011) ─────────────────────────────────────
+export type FormStatus = 'draft' | 'published'
+
+export type FieldType =
+  | 'text'
+  | 'textarea'
+  | 'email'
+  | 'phone'
+  | 'number'
+  | 'date'
+  | 'select'
+  | 'radio'
+  | 'checkbox_group'
+  | 'consent'
+  | 'heading'
+  | 'paragraph'
+  | 'hidden'
+
+export interface FieldOption {
+  label: string
+  value: string
+}
+
+export interface FormField {
+  id: string
+  type: FieldType
+  key: string // clave del dato; las reservadas mapean a columnas de contacts
+  label: string
+  placeholder?: string
+  help?: string
+  required?: boolean
+  width: 'full' | 'half' // 'half' = media columna (2 por fila en escritorio)
+  options?: FieldOption[] // select | radio | checkbox_group
+  content_html?: string // heading | paragraph (texto estático saneado)
+  default_value?: string // hidden | text
+}
+
+/**
+ * Claves reservadas que mapean directamente a columnas de `contacts`.
+ * `full_name` es especial: se parte en first_name + last_name al enviar.
+ */
+export const CONTACT_FIELD_KEYS = [
+  'full_name',
+  'first_name',
+  'last_name',
+  'email',
+  'phone',
+  'business_name',
+] as const
+export type ContactFieldKey = (typeof CONTACT_FIELD_KEYS)[number]
+
+export interface FormSchema {
+  version: 1
+  fields: FormField[]
+}
+
+export type LabelAlign = 'top' | 'left'
+export type FormTheme = 'clean' | 'card' | 'minimal'
+
+export interface FormStyles {
+  theme: FormTheme
+  background_color: string
+  text_color: string
+  button_color: string
+  button_text_color: string
+  border_color: string
+  border_width: number
+  border_radius: number // radio del contenedor
+  field_radius: number // radio de los campos
+  width: number // ancho máximo (px)
+  label_align: LabelAlign
+}
+
+export type SubmitAction = 'message' | 'redirect'
+
+export interface FormSettings {
+  submit_label: string
+  submit_action: SubmitAction
+  message_html?: string // 'message' (saneado)
+  redirect_url?: string // 'redirect' (URL absoluta http/https)
+  add_tags: string[] // etiquetas a aplicar al contacto
+}
+
 export interface Form {
   id: string
   slug: string
   name: string
   description: string | null
+  status: FormStatus
+  schema: FormSchema
+  styles: FormStyles
+  settings: FormSettings
   created_at: string
   updated_at: string
+}
+
+export interface FormSubmission {
+  id: string
+  form_id: string
+  contact_id: string | null
+  data: Record<string, unknown>
+  visitor_id: string | null
+  created_at: string
+}
+
+export type FormEventType = 'view'
+
+export interface FormEvent {
+  id: string
+  form_id: string
+  visitor_id: string
+  type: FormEventType
+  metadata: Record<string, unknown>
+  created_at: string
 }
 
 export type AutomationStatus = 'draft' | 'active'
