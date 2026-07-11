@@ -126,21 +126,28 @@ Reglas:
 - Usa secciones con tono "oscuro" para el hero o el CTA final si aporta contraste.
 - NO inventes testimonios con nombres reales ni cifras imposibles de verificar.`
 
-/** Genera los pasos del funnel con IA a partir del brief. Reintenta 1 vez si falla. */
-export async function generateFunnelPages(input: {
-  funnelName: string
-  brief: string
-}): Promise<AiGeneratedStep[]> {
-  const openrouter = getOpenRouter()
-  const prompt = `Nombre del embudo: ${input.funnelName}\n\nBrief del negocio:\n${input.brief}\n\nDiseña el embudo completo.`
+const WEBSITE_SYSTEM_PROMPT = `Eres un copywriter y diseñador de sitios web corporativos.
+Diseñas sitios web en ESPAÑOL para el negocio que se te describe (marca, servicios, confianza).
+Reglas:
+- Primera página: la HOME (hero con propuesta de valor clara, qué hace el negocio, servicios o beneficios, prueba social si encaja, CTA de contacto con UN formulario al final).
+- Añade 1-2 páginas más si aportan (ej. "Servicios", "Contacto" con formulario).
+- Titulares concretos y específicos del negocio (nada genérico tipo "Bienvenido").
+- Textos de párrafo de 2-4 frases, claros y profesionales, hablando al cliente ("tú").
+- Usa secciones con tono "oscuro" para el hero o el CTA final si aporta contraste.
+- NO inventes testimonios con nombres reales ni cifras imposibles de verificar.`
 
+async function generatePages(
+  system: string,
+  prompt: string
+): Promise<AiGeneratedStep[]> {
+  const openrouter = getOpenRouter()
   let lastError: unknown
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const { object } = await generateObject({
         model: openrouter(aiModel()),
         schema: aiFunnelSchema,
-        system: SYSTEM_PROMPT,
+        system,
         prompt,
       })
       return object.steps.map((s) => mapStep(s, object.button_color))
@@ -149,6 +156,28 @@ export async function generateFunnelPages(input: {
     }
   }
   throw lastError instanceof Error ? lastError : new Error('La IA no devolvió un diseño válido')
+}
+
+/** Genera los pasos del funnel con IA a partir del brief. Reintenta 1 vez si falla. */
+export async function generateFunnelPages(input: {
+  funnelName: string
+  brief: string
+}): Promise<AiGeneratedStep[]> {
+  return generatePages(
+    SYSTEM_PROMPT,
+    `Nombre del embudo: ${input.funnelName}\n\nBrief del negocio:\n${input.brief}\n\nDiseña el embudo completo.`
+  )
+}
+
+/** Genera las páginas de un SITIO WEB con IA (PRP-014). Mismo esquema, copy de sitio corporativo. */
+export async function generateWebsitePages(input: {
+  siteName: string
+  brief: string
+}): Promise<AiGeneratedStep[]> {
+  return generatePages(
+    WEBSITE_SYSTEM_PROMPT,
+    `Nombre del sitio web: ${input.siteName}\n\nBrief del negocio:\n${input.brief}\n\nDiseña el sitio web completo.`
+  )
 }
 
 /** Reescribe el texto de un bloque (titular o párrafo) manteniendo el contexto del negocio. */

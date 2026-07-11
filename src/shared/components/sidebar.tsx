@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, Calendar, GraduationCap, Zap, Megaphone, Filter, FileText, Settings, LogOut } from 'lucide-react'
+import { LayoutDashboard, Users, Calendar, GraduationCap, Zap, Megaphone, Filter, FileText, Globe, Settings, LogOut } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { ThemeToggle } from './theme-toggle'
 import { signout } from '@/actions/auth'
@@ -21,6 +21,7 @@ const NAV_MAIN: NavItem[] = [
 // Apartado "Web": todo lo que se publica de cara al público
 const NAV_WEB: NavItem[] = [
   { href: '/funnels', label: 'Embudos', icon: Filter },
+  { href: '/websites', label: 'Sitios web', icon: Globe },
   { href: '/forms', label: 'Formularios', icon: FileText },
 ]
 

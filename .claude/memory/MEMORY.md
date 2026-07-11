@@ -67,6 +67,23 @@
   limpiados). Retirado el CRUD viejo de forms de /automations (redirige a /forms). GOTCHAS en el PRP:
   /forms protegido en proxy → el loader va a la raíz pública; visitor id en localStorage (no cookie, para
   iframes de terceros); email siempre requerido (clave de dedup). Sin pendientes de Tony.
+- PRPs 012+013+014 COMPLETADOS (2026-07-11, sesión "3 frentes", todos E2E verificados con next start):
+  · PRP-012 CURSOS: el 404 de /learn era curso en Borrador (no bug) → banner de aviso + Publicar primario;
+    card Alumnos (añadir por email → contacto CRM + enlace de acceso personal /learn/[slug]/access/[token],
+    progreso, quitar); courses.access_mode 'open'|'invite' (invite bloquea inscripción libre); migración 0008;
+    FIX clipboard: navigator.clipboard roto en LAN http → shared/lib/clipboard.ts (usar SIEMPRE copyText).
+  · PRP-013 EMAILS DISEÑADOS EN AUTOMATIZACIONES: paso send_email con 2 modos (Sencillo texto | Diseñado
+    con el editor visual de Marketing) — diseñador en /automations/[id]/email/[nodeId] (autosave a
+    node.config.design V2, carga de plantillas); snapshot del diseño en scheduled_emails.design (migración
+    0009), render al enviar con merge tags + pie de baja; /r valida contra extractDesignUrls; los dados de
+    baja YA NO reciben emails de secuencia (RGPD). GOTCHA: el form demo tiene consentimiento required.
+  · PRP-014 SITIOS WEB tipo GHL: sección Web→Sitios web — sitios multipágina con el editor de páginas de
+    funnels (PageBlockSettings ahora recibe onRewrite callback; esquema de diseño extraído a
+    page-design-schema.ts compartido), IA generateWebsitePages, favicon + scripts head/body (se inyectan
+    en el HTML SSR), /w/[slug]/[pagina] en dominio principal y MULTIDOMINIO compartido con funnels
+    (/sites/[host] resuelve funnel→website; unicidad cruzada en actions). Tablas websites/website_pages/
+    website_domains (migración 0010). Forms embebidos funcionan sin métricas de funnel
+    (PageTrackContext.stepId/variantId nullable). DEPLOY.md ampliado.
 - PRP-007 COMPLETADO (2026-07-05): EMAIL MARKETING tipo GHL — sección /marketing (Estadísticas/Campañas/
   Plantillas), diseñador visual por bloques (una columna, sin librerías), campañas a todos/por etiquetas
   (ahora o programadas), cola idempotente por lotes (claim atómico, 25/cron + 10 inline), tracking de

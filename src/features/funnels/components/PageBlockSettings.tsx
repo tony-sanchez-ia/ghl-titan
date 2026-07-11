@@ -4,8 +4,13 @@ import { useState } from 'react'
 import { Loader2, Sparkles } from 'lucide-react'
 import { ui } from '@/shared/lib/ui'
 import { RichTextInput } from '@/shared/components/rich-text-input'
-import { rewriteBlockText } from '@/actions/funnels'
 import type { Form, PageBlock, PageBlockConfig, PageSection, PageSectionConfig } from '@/types/database'
+
+/** Action de reescritura con IA que enchufa cada builder (funnel o sitio web). */
+export type RewriteFn = (input: {
+  current: string
+  kind: 'heading' | 'text'
+}) => Promise<{ text?: string; error?: string }>
 
 const BLOCK_LABELS: Record<PageBlock['type'], string> = {
   heading: 'Titular',
@@ -72,12 +77,12 @@ function htmlToPlain(html: string): string {
 
 /** Botón "Reescribir con IA" para bloques de titular/texto. */
 function AiRewriteButton({
-  funnelId,
+  onRewrite,
   kind,
   current,
   onRewritten,
 }: {
-  funnelId: string
+  onRewrite: RewriteFn
   kind: 'heading' | 'text'
   current: string
   onRewritten: (text: string) => void
@@ -86,7 +91,7 @@ function AiRewriteButton({
 
   async function onClick() {
     setBusy(true)
-    const res = await rewriteBlockText(funnelId, { current, kind })
+    const res = await onRewrite({ current, kind })
     setBusy(false)
     if (res.error || !res.text) {
       alert(res.error ?? 'La IA no pudo reescribir el texto')
@@ -113,13 +118,13 @@ export function PageBlockSettings({
   block,
   onChange,
   forms,
-  funnelId,
+  onRewrite,
   aiEnabled,
 }: {
   block: PageBlock
   onChange: (config: PageBlockConfig) => void
   forms: Form[]
-  funnelId: string
+  onRewrite: RewriteFn
   aiEnabled: boolean
 }) {
   const c = block.config
@@ -158,7 +163,7 @@ export function PageBlockSettings({
           </Field>
           {aiEnabled && (
             <AiRewriteButton
-              funnelId={funnelId}
+              onRewrite={onRewrite}
               kind="heading"
               current={c.text ?? ''}
               onRewritten={(text) => set({ text })}
@@ -181,7 +186,7 @@ export function PageBlockSettings({
           </Field>
           {aiEnabled && (
             <AiRewriteButton
-              funnelId={funnelId}
+              onRewrite={onRewrite}
               kind="text"
               current={htmlToPlain(c.html ?? '')}
               onRewritten={(text) => {

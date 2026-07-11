@@ -20,8 +20,9 @@ import { FunnelTracker } from './FunnelTracker'
 export type PageRenderMode = 'public' | 'desktop' | 'mobile'
 
 export interface PageTrackContext {
-  stepId: string
-  variantId: string
+  // null = página de sitio web (sin métricas de funnel; el form sigue creando contactos)
+  stepId: string | null
+  variantId: string | null
   nextUrl: string | null
 }
 
@@ -229,7 +230,9 @@ export function PageView({
     >
       {/* En público, las columnas vuelven a su ancho proporcional a partir de md */}
       <style>{`@media (min-width: 768px){ [data-col]{ width: var(--col-w, 100%) !important; } }`}</style>
-      {track && <FunnelTracker stepId={track.stepId} variantId={track.variantId} />}
+      {track?.stepId && track.variantId && (
+        <FunnelTracker stepId={track.stepId} variantId={track.variantId} />
+      )}
       {design.sections.map((s) => (
         <section
           key={s.id}

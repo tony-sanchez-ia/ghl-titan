@@ -19,8 +19,8 @@ export function EmbeddedFunnelForm({
   buttonLabel,
 }: {
   formSlug: string
-  stepId: string
-  variantId: string
+  stepId: string | null // null = página de sitio web (sin métricas de funnel)
+  variantId: string | null
   nextUrl: string | null
   buttonColor: string
   buttonLabel: string
@@ -40,14 +40,16 @@ export function EmbeddedFunnelForm({
       setError(res.error)
       return
     }
-    try {
-      await fetch('/api/track', {
-        method: 'POST',
-        body: JSON.stringify({ step_id: stepId, variant_id: variantId, type: 'form_submit', metadata: { form_slug: formSlug } }),
-        keepalive: true,
-      })
-    } catch {
-      /* el tracking jamás rompe el envío */
+    if (stepId && variantId) {
+      try {
+        await fetch('/api/track', {
+          method: 'POST',
+          body: JSON.stringify({ step_id: stepId, variant_id: variantId, type: 'form_submit', metadata: { form_slug: formSlug } }),
+          keepalive: true,
+        })
+      } catch {
+        /* el tracking jamás rompe el envío */
+      }
     }
     if (nextUrl) {
       router.push(nextUrl)

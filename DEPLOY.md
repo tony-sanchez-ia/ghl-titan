@@ -61,26 +61,28 @@ desde tu máquina (apunta a la misma Neon de producción) — no van dentro del 
 `node scripts/create-admin.js <email> <password>` (upsert por email). El registro público en
 `/signup` solo funciona mientras no exista ningún usuario (primera puesta en marcha).
 
-## Multidominio: dominios de cliente para funnels (PRP-009)
+## Multidominio: dominios para funnels (PRP-009) y sitios web (PRP-014)
 
-GHL Titan sirve cada embudo desde el dominio propio de su cliente apoyándose en el sistema
+GHL Titan sirve cada embudo O sitio web desde su propio dominio apoyándose en el sistema
 de dominios de EasyPanel (Traefik emite el SSL de forma automática). Runbook por dominio:
 
-1. **DNS** (proveedor del dominio del cliente): registro `A` del dominio (p. ej.
+1. **DNS** (proveedor del dominio): registro `A` del dominio (p. ej.
    `ofertatrading.com`, o un subdominio con `CNAME`) apuntando a la **IP del VPS**.
 2. **EasyPanel**: servicio de GHL Titan → **Domains** → *Add Domain* → escribir el dominio
    (HTTPS activado). Traefik pide el certificado Let's Encrypt solo.
    - ⚠️ Si el DNS aún no ha propagado, la emisión del certificado falla: espera unos minutos
      y vuelve a intentarlo (EasyPanel reintenta al re-guardar el dominio).
-3. **Titan**: panel → Embudos → (tu embudo) → **Dominios propios** → añadir el mismo dominio.
+3. **Titan**: panel → **Embudos** → (tu embudo) → *Dominios propios*, o bien
+   **Sitios web** → (tu sitio) → *Dominio propio* → añadir el mismo dominio.
 
-Con eso, `https://dominio-del-cliente/` sirve el PRIMER paso del embudo y
-`https://dominio-del-cliente/<paso>` cada paso. El panel sigue viviendo SOLO en el dominio
-principal (`NEXT_PUBLIC_SITE_URL`). No hay límite de dominios: repite el runbook por cada uno.
+Con eso, `https://el-dominio/` sirve el primer paso del embudo (o la página de inicio del
+sitio web) y `https://el-dominio/<slug>` cada paso/página. El panel sigue viviendo SOLO en
+el dominio principal (`NEXT_PUBLIC_SITE_URL`). No hay límite de dominios: repite el runbook.
 
 - Cómo funciona por dentro: `src/proxy.ts` detecta el header `Host`; si no es el dominio
   principal (ni localhost/IP) reescribe internamente a `/sites/<host>/...`, que busca el
-  dominio en la tabla `funnel_domains`. Dominio no registrado → 404.
+  dominio primero en `funnel_domains` y después en `website_domains`. Dominio no
+  registrado → 404. Un dominio no puede apuntar a la vez a un embudo y a un sitio.
 - ⚠️ `NEXT_PUBLIC_SITE_URL` debe ser el dominio del PANEL. Las URLs públicas de los funnels
   en dominios de cliente se generan relativas al propio dominio (nunca desde esa variable).
 - Prueba sin DNS (desde tu máquina): `curl -H "Host: dominio-del-cliente" https://IP-del-VPS/`

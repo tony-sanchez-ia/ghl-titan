@@ -3,11 +3,14 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { query, queryOne } from '@/lib/db'
-import { columnCount } from '@/shared/lib/section-layout'
-import { sanitizeInlineHtml, sanitizeRawHtml } from '@/shared/lib/sanitize'
 import { aiAvailable } from '@/lib/ai/openrouter'
 import { generateFunnelPages, rewriteText, type AiGeneratedStep } from '@/features/funnels/services/ai-generate'
 import { defaultPageDesign } from '@/features/funnels/services/design'
+import {
+  hostnameSchema,
+  normalizePageDesign,
+  pageDesignSchema,
+} from '@/features/funnels/services/page-design-schema'
 import type { FunnelStatus, PageDesign } from '@/types/database'
 
 function slugify(s: string): string {
@@ -208,77 +211,7 @@ export async function deleteStep(stepId: string): Promise<{ success?: boolean; e
 }
 
 // ─── Diseño de página (variantes) ───────────────────────────────────────────
-
-const pageBlockSchema = z.object({
-  id: z.string().min(1).max(64),
-  type: z.enum(['heading', 'text', 'image', 'button', 'video', 'form', 'html', 'divider', 'spacer']),
-  config: z.object({
-    text: z.string().max(500).optional(),
-    html: z.string().max(20000).optional(),
-    level: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
-    align: z.enum(['left', 'center', 'right']).optional(),
-    image_url: z.string().trim().url().max(1000).optional().or(z.literal('')),
-    alt: z.string().max(300).optional(),
-    link_url: z.string().trim().url().max(1000).optional().or(z.literal('')),
-    label: z.string().max(200).optional(),
-    url: z
-      .string()
-      .trim()
-      .max(1000)
-      .refine((u) => u === '' || /^https?:\/\//i.test(u) || u.startsWith('/'), {
-        message: 'El enlace debe ser https://… o una ruta que empiece por /',
-      })
-      .optional(),
-    video_url: z.string().trim().url().max(1000).optional().or(z.literal('')),
-    form_id: z.string().uuid().optional(),
-    form_slug: z.string().max(100).optional(),
-    height: z.number().int().min(4).max(240).optional(),
-  }),
-})
-
-const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Color inválido')
-
-const pageSectionSchema = z
-  .object({
-    id: z.string().min(1).max(64),
-    layout: z.enum(['1', '2', '3', '4', '1/3:2/3', '2/3:1/3', '1/4:3/4', '3/4:1/4']),
-    config: z.object({
-      background_color: hexColor.optional(),
-      padding: z.number().int().min(0).max(160).optional(),
-    }),
-    columns: z.array(z.array(pageBlockSchema).max(30)).min(1).max(4),
-  })
-  .refine((s) => s.columns.length === columnCount(s.layout), {
-    message: 'Las columnas no cuadran con el diseño de la sección',
-  })
-
-const pageDesignSchema = z.object({
-  version: z.literal(1),
-  styles: z.object({ background_color: hexColor, button_color: hexColor, text_color: hexColor }),
-  sections: z.array(pageSectionSchema).max(30, 'La página no puede tener más de 30 secciones'),
-})
-
-/** Limpia strings vacíos y SANEA el HTML de usuario (texto con formato y bloque código). */
-function normalizePageDesign(design: z.infer<typeof pageDesignSchema>): PageDesign {
-  return {
-    ...design,
-    sections: design.sections.map((s) => ({
-      ...s,
-      columns: s.columns.map((col) =>
-        col.map((b) => {
-          const config = Object.fromEntries(
-            Object.entries(b.config).filter(([, v]) => v !== '' && v !== undefined)
-          ) as typeof b.config
-          if (typeof config.html === 'string') {
-            config.html =
-              b.type === 'html' ? sanitizeRawHtml(config.html) : sanitizeInlineHtml(config.html)
-          }
-          return { ...b, config }
-        })
-      ),
-    })),
-  }
-}
+// (esquema + saneado compartidos con sitios web en services/page-design-schema.ts)
 
 /** Guarda el diseño de una variante de paso (autosave del editor). */
 export async function saveStepDesign(
@@ -317,16 +250,6 @@ export async function saveStepSeo(
 
 // ─── Dominios propios ────────────────────────────────────────────────────────
 
-const hostnameSchema = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .max(253)
-  .regex(
-    /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/,
-    'Escribe solo el dominio, sin https:// ni barras (p. ej. ofertas.tunegocio.com)'
-  )
-
 /** Asocia un dominio propio al funnel (el alta DNS + EasyPanel es manual, ver DEPLOY.md). */
 export async function addFunnelDomain(
   funnelId: string,
@@ -334,6 +257,12 @@ export async function addFunnelDomain(
 ): Promise<{ success?: boolean; error?: string }> {
   const parsed = hostnameSchema.safeParse(hostname.replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Dominio inválido' }
+  // Un dominio no puede apuntar a la vez a un embudo y a un sitio web
+  const taken = await queryOne<{ id: string }>(
+    `select id from website_domains where hostname = $1`,
+    [parsed.data]
+  )
+  if (taken) return { error: 'Ese dominio ya está asociado a un sitio web' }
   try {
     await query(`insert into funnel_domains (hostname, funnel_id) values ($1, $2)`, [
       parsed.data,

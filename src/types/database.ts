@@ -608,6 +608,44 @@ export interface FunnelEvent {
   created_at: string
 }
 
+// ─── Sitios web (PRP-014) ────────────────────────────────────────────────────
+
+export type WebsiteStatus = 'draft' | 'published'
+
+export interface Website {
+  id: string
+  name: string
+  slug: string
+  brief: string | null
+  favicon_url: string | null
+  head_scripts: string | null
+  body_scripts: string | null
+  status: WebsiteStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface WebsitePage {
+  id: string
+  website_id: string
+  slug: string
+  name: string
+  is_home: boolean
+  seo_title: string | null
+  seo_description: string | null
+  design: PageDesign
+  position: number
+  created_at: string
+  updated_at: string
+}
+
+export interface WebsiteDomain {
+  id: string
+  hostname: string
+  website_id: string
+  created_at: string
+}
+
 // ─── Integraciones (PRP-010) ─────────────────────────────────────────────────
 
 export type IntegrationStatus = 'connected' | 'reauth_required'

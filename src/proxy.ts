@@ -1,11 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { SESSION_COOKIE, verifySessionToken } from '@/lib/auth/jwt'
 
-/** Primeros segmentos de ruta que NUNCA son un paso de funnel en dominio propio. */
+/** Primeros segmentos de ruta que NUNCA son una página pública en dominio propio. */
 const RESERVED_SEGMENTS = new Set([
   'api', 'login', 'signup', 'dashboard', 'contacts', 'calendars', 'courses',
   'automations', 'marketing', 'funnels', 'forms', 'settings', 'book', 'form', 'learn',
-  'unsubscribe', 'p', 'r', 'e', 'sites',
+  'unsubscribe', 'p', 'r', 'e', 'sites', 'websites', 'w',
 ])
 
 const VISITOR_COOKIE_OPTS = {
@@ -76,6 +76,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/marketing') ||
     pathname.startsWith('/funnels') ||
     pathname.startsWith('/forms') ||
+    pathname.startsWith('/websites') ||
     pathname.startsWith('/settings')
   const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/signup')
 
