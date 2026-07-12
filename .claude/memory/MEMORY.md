@@ -108,8 +108,12 @@
 - Gotchas clave (detalle en ghl-titan-vision.md): acceso LAN → allowedDevOrigins + -H 0.0.0.0; limpiar .next tras mover
   archivos raíz (OOM); next-themes gatear todo tras `mounted`; Supabase relaciones embebidas → cast `as unknown as`.
 - Pendiente del usuario: verificar dominio Resend (emails a terceros), conectar Google Calendar (Meet por cita),
-  configurar cron para /api/cron/process-emails, deploy en VPS+dominio, OPENROUTER_API_KEY para la IA de funnels,
-  app Azure para Outlook free/busy (MICROSOFT_CLIENT_ID) + enlazar desde Ajustes.
+  configurar cron para /api/cron/process-emails, deploy en VPS+dominio, OPENROUTER_API_KEY para la IA de funnels.
+- Outlook CONECTADO (2026-07-12): Tony creó la app Azure (client ID en .env.local como MICROSOFT_CLIENT_ID),
+  enlazó su cuenta por device code y funciona. Añadida vista semanal LUN-SÁB del calendario de Outlook en
+  /calendars (entre Calendarios y Próximas citas): outlook-events.ts (calendarView con subject) +
+  OutlookWeekView.tsx (RSC pura, nav ?week=lunes, rejilla horaria 8-21 autoexpandible, colores por showAs,
+  fila de día completo, Europe/Madrid). Verificado en browser con sus eventos reales.
 - GOTCHA máquina compartida (detalle en prp-funnels.md): validar con `next start` (dev server muere por OOM),
   browser Playwright en ráfagas cortas, y confirmar que el puerto sirve TU app (Docker de otros convive en 3000).
 - GOTCHA checks: `npm run typecheck` NO existe y `npm run lint` está roto (Next 16 quitó next lint) →

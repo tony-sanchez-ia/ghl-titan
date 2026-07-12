@@ -1,13 +1,47 @@
 import Link from 'next/link'
 import { Plus, Clock, Calendar as CalIcon } from 'lucide-react'
+import { fromZonedTime, formatInTimeZone } from 'date-fns-tz'
 import { ui } from '@/shared/lib/ui'
 import { listCalendars, listUpcomingBookings } from '@/features/scheduling/services/calendars'
 import { BookingsTable } from '@/features/scheduling/components/BookingsTable'
+import { OutlookWeekView } from '@/features/scheduling/components/OutlookWeekView'
+import { getOutlookConnection } from '@/features/integrations/services/outlook-auth'
+import { getOutlookWeekEvents } from '@/features/integrations/services/outlook-events'
 
-export default async function CalendarsPage() {
-  const [calendars, bookings] = await Promise.all([
+const TZ = 'Europe/Madrid'
+
+/** Lunes ('yyyy-MM-dd') de la semana mostrada: ?week=YYYY-MM-DD o la actual. */
+function resolveWeekStart(weekParam: string | undefined, todayYmd: string): string {
+  if (weekParam && /^\d{4}-\d{2}-\d{2}$/.test(weekParam)) return weekParam
+  const [y, m, d] = todayYmd.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  dt.setUTCDate(dt.getUTCDate() - ((dt.getUTCDay() + 6) % 7)) // retrocede hasta el lunes
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`
+}
+
+export default async function CalendarsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ week?: string }>
+}) {
+  const { week } = await searchParams
+  const todayYmd = formatInTimeZone(new Date(), TZ, 'yyyy-MM-dd')
+  const weekStartYmd = resolveWeekStart(week, todayYmd)
+
+  // Rango lunes 00:00 → domingo 00:00 (cubre lunes-sábado completos, hora local)
+  const from = fromZonedTime(`${weekStartYmd}T00:00:00`, TZ)
+  const [wy, wm, wd] = weekStartYmd.split('-').map(Number)
+  const sunday = new Date(Date.UTC(wy, wm - 1, wd + 6))
+  const to = fromZonedTime(
+    `${sunday.getUTCFullYear()}-${String(sunday.getUTCMonth() + 1).padStart(2, '0')}-${String(sunday.getUTCDate()).padStart(2, '0')}T00:00:00`,
+    TZ
+  )
+
+  const [calendars, bookings, outlook, outlookEvents] = await Promise.all([
     listCalendars(),
     listUpcomingBookings(),
+    getOutlookConnection(),
+    getOutlookWeekEvents(from, to),
   ])
 
   return (
@@ -51,6 +85,13 @@ export default async function CalendarsPage() {
           </div>
         )}
       </section>
+
+      <OutlookWeekView
+        weekStartYmd={weekStartYmd}
+        todayYmd={todayYmd}
+        events={outlookEvents}
+        calendarName={outlook?.calendar_name ?? null}
+      />
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
