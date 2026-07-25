@@ -3,10 +3,16 @@ import { ui } from '@/shared/lib/ui'
 import type { FormField, FormSubmission } from '@/types/database'
 import { isInputField } from '../services/schema'
 
-function formatValue(v: unknown): string {
+/** Etiqueta legible de una opción (evita mostrar el value interno tipo "opcion-1"). */
+function optionLabel(field: FormField, value: string): string {
+  return field.options?.find((o) => o.value === value)?.label ?? value
+}
+
+function formatValue(v: unknown, field: FormField): string {
   if (v == null || v === '') return '—'
-  if (Array.isArray(v)) return v.join(', ')
   if (typeof v === 'boolean') return v ? 'Sí' : 'No'
+  if (Array.isArray(v)) return v.map((x) => optionLabel(field, String(x))).join(', ')
+  if (field.type === 'select' || field.type === 'radio') return optionLabel(field, String(v))
   return String(v)
 }
 
@@ -46,8 +52,8 @@ export function SubmissionsTable({
                 {new Date(s.created_at).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}
               </td>
               {cols.map((c) => (
-                <td key={c.id} className="px-4 py-3 max-w-xs truncate" title={formatValue(s.data[c.key])}>
-                  {formatValue(s.data[c.key])}
+                <td key={c.id} className="px-4 py-3 max-w-xs truncate" title={formatValue(s.data[c.key], c)}>
+                  {formatValue(s.data[c.key], c)}
                 </td>
               ))}
               <td className="px-4 py-3">
