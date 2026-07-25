@@ -3,8 +3,8 @@
 /.pnp
 .pnp.js
 yarn.lock
-package-lock.json
 pnpm-lock.yaml
+# package-lock.json SÍ se versiona: el Dockerfile usa `npm ci` y lo necesita en el repo
 
 # Testing
 /coverage
