@@ -125,6 +125,10 @@
   archivos raíz (OOM); next-themes gatear todo tras `mounted`; Supabase relaciones embebidas → cast `as unknown as`.
 - Pendiente del usuario: verificar dominio Resend (emails a terceros), conectar Google Calendar (Meet por cita),
   configurar cron para /api/cron/process-emails, deploy en VPS+dominio.
+- PRP-016 PREPARADO sin ejecutar (2026-07-31): servidor MCP de GHL Titan para que el "Business OS" de Tony
+  (su Claude Code local) consulte prospectos y haga seguimiento. Decisiones CERRADAS: MCP (no REST), sin
+  pipeline (seguimiento por etiquetas), lectura + escrituras seguras (etiquetar dispara tag_added, notas),
+  nunca enviar/borrar, ejecutar idealmente tras el deploy VPS. Ver .claude/PRPs/prp-mcp-server.md.
 - OPENROUTER_API_KEY CONFIGURADA (2026-07-30): Tony la pegó como `OPENROUTER_APIKEY` (sin el guión bajo) →
   corregido a `OPENROUTER_API_KEY` en .env.local. Clave válida, con crédito (no free tier), y verificada
   contra la API: chat + generación ESTRUCTURADA (json_schema) OK con el modelo por defecto
