@@ -36,6 +36,9 @@ leen al arrancar).
    EMAIL_FROM=GHL Titan <no-reply@tu-dominio.com>   # tras verificar dominio en Resend
    EMAIL_ADMIN=titanicfactorymedia@gmail.com
    CRON_SECRET=<un token largo y secreto>
+   MICROSOFT_CLIENT_ID=<app registration de Azure>   # Outlook free/busy en la agenda
+   OPENROUTER_API_KEY=<tu key de openrouter.ai/keys>  # IA de funnels, sitios web y Asistente IA
+   # OPENROUTER_ASSISTANT_MODEL=anthropic/claude-sonnet-4.6   # opcional: modelo del Asistente IA
    NODE_ENV=production
    ```
    (Usa el **pooler host** de Neon en `DATABASE_URL` si esperas muchas conexiones; para una

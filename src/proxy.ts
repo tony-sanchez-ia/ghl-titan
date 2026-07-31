@@ -5,7 +5,7 @@ import { SESSION_COOKIE, verifySessionToken } from '@/lib/auth/jwt'
 const RESERVED_SEGMENTS = new Set([
   'api', 'login', 'signup', 'dashboard', 'contacts', 'calendars', 'courses',
   'automations', 'marketing', 'funnels', 'forms', 'settings', 'book', 'form', 'learn',
-  'unsubscribe', 'p', 'r', 'e', 'sites', 'websites', 'w',
+  'unsubscribe', 'p', 'r', 'e', 'sites', 'websites', 'w', 'assistant',
 ])
 
 const VISITOR_COOKIE_OPTS = {
@@ -74,6 +74,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/courses') ||
     pathname.startsWith('/automations') ||
     pathname.startsWith('/marketing') ||
+    pathname.startsWith('/assistant') ||
     pathname.startsWith('/funnels') ||
     pathname.startsWith('/forms') ||
     pathname.startsWith('/websites') ||

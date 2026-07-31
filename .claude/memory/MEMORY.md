@@ -84,6 +84,22 @@
     (/sites/[host] resuelve funnel→website; unicidad cruzada en actions). Tablas websites/website_pages/
     website_domains (migración 0010). Forms embebidos funcionan sin métricas de funnel
     (PageTrackContext.stepId/variantId nullable). DEPLOY.md ampliado.
+- PRP-015 COMPLETADO (2026-07-30): ASISTENTE IA DE COPYWRITING — sección /assistant (sidebar "Asistente IA",
+  icono Sparkles): chat streaming (Vercel AI SDK ai@7 `streamText` + tools + `stopWhen: stepCountIs(8)`,
+  respuesta `toTextStreamResponse()`, cliente SIN @ai-sdk/react: fetch + getReader). Modelo
+  anthropic/claude-sonnet-4.6 vía OpenRouter (env opcional OPENROUTER_ASSISTANT_MODEL; assistantModel() en
+  lib/ai/openrouter.ts). 7 tools: resumen_audiencia, buscar_contactos, ver_contacto, listar_campanas,
+  ver_campana, crear_borrador_newsletter (diseño V2 con newSection + header/footer, SIEMPRE status draft —
+  decisión Tony: el agente NUNCA envía), guardar_memoria. Memoria de marca en tabla assistant_memories
+  (migración 0011), inyectada entera al system prompt; auto-aprende + panel UI ver/editar/borrar/resetear
+  (actions/assistant.ts). API /api/assistant/chat valida sesión con getSession() (los /api/* NO pasan por proxy).
+  Verificado E2E real: pregunta con datos (189), memoria guardada por el agente + dedupe entre sesiones
+  ("ya lo tenía guardado"), borrador creado y abierto en el editor visual. Datos de prueba limpiados
+  (queda 1 memoria real de marca). GOTCHAS: (1) pg devuelve timestamptz como Date y el AI SDK valida el
+  output de tools como JSON puro → convertir SIEMPRE fechas con helper iso() en la frontera del tool, si no
+  AI_TypeValidationError rompe el stream en silencio; (2) el modelo mete markdown en el chat → prohibirlo en
+  el system prompt (el chat renderiza texto plano + linkifica rutas); (3) /marketing abre en pestaña
+  Estadísticas — los borradores están en ?tab=campaigns. PRP: prp-copywriting-agent.md.
 - PRP-007 COMPLETADO (2026-07-05): EMAIL MARKETING tipo GHL — sección /marketing (Estadísticas/Campañas/
   Plantillas), diseñador visual por bloques (una columna, sin librerías), campañas a todos/por etiquetas
   (ahora o programadas), cola idempotente por lotes (claim atómico, 25/cron + 10 inline), tracking de
@@ -108,7 +124,13 @@
 - Gotchas clave (detalle en ghl-titan-vision.md): acceso LAN → allowedDevOrigins + -H 0.0.0.0; limpiar .next tras mover
   archivos raíz (OOM); next-themes gatear todo tras `mounted`; Supabase relaciones embebidas → cast `as unknown as`.
 - Pendiente del usuario: verificar dominio Resend (emails a terceros), conectar Google Calendar (Meet por cita),
-  configurar cron para /api/cron/process-emails, deploy en VPS+dominio, OPENROUTER_API_KEY para la IA de funnels.
+  configurar cron para /api/cron/process-emails, deploy en VPS+dominio.
+- OPENROUTER_API_KEY CONFIGURADA (2026-07-30): Tony la pegó como `OPENROUTER_APIKEY` (sin el guión bajo) →
+  corregido a `OPENROUTER_API_KEY` en .env.local. Clave válida, con crédito (no free tier), y verificada
+  contra la API: chat + generación ESTRUCTURADA (json_schema) OK con el modelo por defecto
+  anthropic/claude-sonnet-4.5 vía Bedrock. IA de funnels y sitios web ACTIVA. Añadidas
+  OPENROUTER_API_KEY + MICROSOFT_CLIENT_ID a la lista de env runtime de DEPLOY.md (faltaban las dos).
+  GOTCHA: al pegar claves, verificar SIEMPRE el nombre exacto que lee el código (grep en src/).
 - Outlook CONECTADO (2026-07-12): Tony creó la app Azure (client ID en .env.local como MICROSOFT_CLIENT_ID),
   enlazó su cuenta por device code y funciona. Añadida vista semanal LUN-SÁB del calendario de Outlook en
   /calendars (entre Calendarios y Próximas citas): outlook-events.ts (calendarView con subject) +
@@ -116,6 +138,11 @@
   fila de día completo, Europe/Madrid). Verificado en browser con sus eventos reales.
 - GOTCHA máquina compartida (detalle en prp-funnels.md): validar con `next start` (dev server muere por OOM),
   browser Playwright en ráfagas cortas, y confirmar que el puerto sirve TU app (Docker de otros convive en 3000).
+- GOTCHA build local (2026-07-30): `earlyoom -r 3600` corre en la máquina y MATA `next build` (SIGTERM, exit 143)
+  en cuanto la RAM disponible baja del umbral — la swap vive al 99% (sesiones de roberto/yadira + n8n de tony),
+  así que salta con cualquier pico. Workaround: (1) temporal en next.config.ts `typescript:{ignoreBuildErrors:true}`
+  (tras `npx tsc --noEmit` aparte) + `experimental.cpus:1` — REVERTIR tras el build; (2) bucle que espera
+  avail ≥1600MB (`free -m`) antes de intentar. Los exit 144 sueltos del shell son el mismo fenómeno.
 - GOTCHA checks: `npm run typecheck` NO existe y `npm run lint` está roto (Next 16 quitó next lint) →
   usar `npx tsc --noEmit`. Si el Playwright MCP está "already in use" (otro agente): script Node con el
   playwright del caché npx (~/.npm/_npx/*/node_modules) + executablePath a un chromium_headless_shell

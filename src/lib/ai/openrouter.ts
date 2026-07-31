@@ -16,3 +16,8 @@ export function getOpenRouter() {
 export function aiModel(): string {
   return process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-4.5'
 }
+
+/** Modelo del Asistente IA de copywriting. Configurable por env. */
+export function assistantModel(): string {
+  return process.env.OPENROUTER_ASSISTANT_MODEL || 'anthropic/claude-sonnet-4.6'
+}

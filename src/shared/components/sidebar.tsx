@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, Calendar, GraduationCap, Zap, Megaphone, Filter, FileText, Globe, Settings, LogOut } from 'lucide-react'
+import { LayoutDashboard, Users, Calendar, GraduationCap, Zap, Megaphone, Sparkles, Filter, FileText, Globe, Settings, LogOut } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { ThemeToggle } from './theme-toggle'
 import { signout } from '@/actions/auth'
@@ -16,6 +16,7 @@ const NAV_MAIN: NavItem[] = [
   { href: '/courses', label: 'Cursos', icon: GraduationCap },
   { href: '/automations', label: 'Automatizaciones', icon: Zap },
   { href: '/marketing', label: 'Marketing', icon: Megaphone },
+  { href: '/assistant', label: 'Asistente IA', icon: Sparkles },
 ]
 
 // Apartado "Web": todo lo que se publica de cara al público
