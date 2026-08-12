@@ -46,9 +46,11 @@ leen al arrancar).
 8. **Deploy**.
 
 ## Tras el deploy
-- **Cron de automatizaciones**: configura un cron que llame cada X minutos a
-  `https://tu-dominio.com/api/cron/process-emails?token=<CRON_SECRET>`
-  (EasyPanel tiene cron jobs, o usa cron-job.org / n8n).
+- **Cron de automatizaciones**: va DENTRO del contenedor — `docker-entrypoint.sh` llama a
+  `/api/cron/process-emails` cada 5 min con el `CRON_SECRET` del entorno (EasyPanel no trae
+  cron jobs para servicios App; su guía recomienda montarlo en el Dockerfile). No hay que
+  configurar nada fuera. Alternativa externa si se quisiera: cron-job.org / n8n llamando a
+  `https://tu-dominio.com/api/cron/process-emails?token=<CRON_SECRET>`.
 - **Resend**: verifica tu dominio en resend.com/domains y cambia `EMAIL_FROM` a una dirección
   de ese dominio → se activan los emails a clientes (citas + secuencias).
 

@@ -29,6 +29,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Cron interno (procesa automatizaciones cada 5 min; ver docker-entrypoint.sh)
+COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
+
 USER nextjs
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["./docker-entrypoint.sh"]
