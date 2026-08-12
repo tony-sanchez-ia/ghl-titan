@@ -31,7 +31,13 @@ interface LinkInfo {
  * Estados: no conectado / enlazando (código + polling) / conectado (+ selector
  * de calendario) / reconectar.
  */
-export function OutlookConnectionCard({ connection }: { connection: Connection | null }) {
+export function OutlookConnectionCard({
+  connection,
+  children,
+}: {
+  connection: Connection | null
+  children?: React.ReactNode
+}) {
   const router = useRouter()
   const [link, setLink] = useState<LinkInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -263,6 +269,9 @@ export function OutlookConnectionCard({ connection }: { connection: Connection |
           )}
         </div>
       </div>
+
+      {/* Otras integraciones (p.ej. Google Calendar) comparten esta card */}
+      {children && <div className="border-t border-border pt-4">{children}</div>}
     </div>
   )
 }

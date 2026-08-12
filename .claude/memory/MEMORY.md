@@ -147,6 +147,26 @@
   así que salta con cualquier pico. Workaround: (1) temporal en next.config.ts `typescript:{ignoreBuildErrors:true}`
   (tras `npx tsc --noEmit` aparte) + `experimental.cpus:1` — REVERTIR tras el build; (2) bucle que espera
   avail ≥1600MB (`free -m`) antes de intentar. Los exit 144 sueltos del shell son el mismo fenómeno.
+- DEPLOY HECHO (2026-08-12): GHL Titan EN PRODUCCIÓN en https://ghl.titanicfactory.com (VPS EasyPanel de
+  Tony, misma BD Neon que local). Verificado E2E real: login, dashboard, /book con reserva real → dedup
+  contacto + activities + EMAIL DE CONFIRMACIÓN ENVIADO desde email.titanicfactory.com (dominio VERIFICADO
+  en Resend; EMAIL_FROM=Titanic Factory <no-reply@email.titanicfactory.com> en local y prod). Cron endpoint
+  OK (200 con token/401 sin). Valores EasyPanel + URL del cron en .env.easypanel.local (gitignored).
+  AUTH_SECRET de prod = el local (OBLIGATORIO: tokens Outlook cifrados con clave derivada de él).
+  PENDIENTE: programar el cron (opciones en .env.easypanel.local), dominios iatitans.com/trabajadoria.com
+  (multidominio funnels/sitios, esperan un funnel/sitio asignado), y ANTES DE CANCELAR GHL: migrar el curso
+  completo (GHL tiene 6 módulos, Titan solo 2 módulos/2 lecciones) + redirigir enlaces públicos viejos de
+  agendación de GHL. Repo GitHub PÚBLICO (avisado a Tony por si quiere hacerlo privado).
+- PRP-017 COMPLETADO (2026-08-12): GOOGLE CALENDAR + MEET por cita — code flow con redirect (device flow
+  NO admite Calendar), rutas /api/integrations/google/start|callback (state en cookie httpOnly, sesión
+  obligatoria), google-auth.ts + google-events.ts (fail-open 5s), card en Ajustes (comparte la card de
+  Outlook vía children). Evento para TODA reserva (decisión Tony), prospecto invitado con sendUpdates:none,
+  Meet único si location_type='google_meet' → se guarda en bookings.location_value (email/panel sin cambios)
+  + bookings.google_event_id (migración 0012, aplicada). Cancelar borra evento, reprogramar lo mueve.
+  GOTCHAS NUEVOS (detalle en el PRP): redirects de rutas API SIEMPRE sobre NEXT_PUBLIC_SITE_URL (request.url
+  normaliza el host y pierde cookies); route.ts no admite exports propios (constantes al servicio).
+  PENDIENTE Tony: alta en Google Cloud (publicar app "In production" o el token caduca a 7 días) →
+  GOOGLE_CLIENT_ID/SECRET → conectar en Ajustes de PRODUCCIÓN → prueba real.
 - GOTCHA checks: `npm run typecheck` NO existe y `npm run lint` está roto (Next 16 quitó next lint) →
   usar `npx tsc --noEmit`. Si el Playwright MCP está "already in use" (otro agente): script Node con el
   playwright del caché npx (~/.npm/_npx/*/node_modules) + executablePath a un chromium_headless_shell

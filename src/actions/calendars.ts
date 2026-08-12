@@ -5,6 +5,11 @@ import { z } from 'zod'
 import { query, queryOne } from '@/lib/db'
 import { generateSlots } from '@/features/scheduling/services/availability'
 import { getOutlookBusyIntervals } from '@/features/integrations/services/outlook-freebusy'
+import {
+  createGoogleEvent,
+  moveGoogleEvent,
+  deleteGoogleEvent,
+} from '@/features/integrations/services/google-events'
 import { sendBookingEmails } from '@/features/notifications/services/booking-emails'
 import { fireTrigger } from '@/features/automations/services/engine'
 import { processDueEmails } from '@/features/automations/services/email-engine'
@@ -265,6 +270,33 @@ export async function createPublicBooking(formData: FormData) {
     return { error: (err as Error).message }
   }
 
+  // Evento en el Google Calendar del admin (+ Meet único si es videollamada).
+  // Fail-open: si no hay conexión o Google falla, queda el enlace fijo del calendario.
+  let locationValue = calendar.location_value
+  const googleEvent = await createGoogleEvent({
+    summary: `${name} — ${calendar.name}`,
+    description: [
+      'Reserva vía GHL Titan',
+      `Email: ${email}`,
+      phone ? `Teléfono: ${phone}` : null,
+      notes ? `Notas: ${notes}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    startsAtIso: startsAt.toISOString(),
+    endsAtIso: endsAt.toISOString(),
+    attendeeEmail: email,
+    attendeeName: name,
+    withMeet: calendar.location_type === 'google_meet',
+  })
+  if (googleEvent) {
+    locationValue = googleEvent.meetLink ?? calendar.location_value
+    await query(
+      'update bookings set google_event_id = $1, location_value = $2 where id = $3',
+      [googleEvent.eventId, locationValue, bookingId]
+    )
+  }
+
   // Registra la actividad en el timeline del contacto.
   if (contactId) {
     await query(
@@ -282,7 +314,7 @@ export async function createPublicBooking(formData: FormData) {
       phone: phone || null,
       starts_at: startsAt.toISOString(),
       location_type: calendar.location_type,
-      location_value: calendar.location_value,
+      location_value: locationValue,
       notes: notes || null,
     },
     calendar: { name: calendar.name },
@@ -310,17 +342,22 @@ export async function createPublicBooking(formData: FormData) {
   return {
     success: true,
     locationType: calendar.location_type as string,
-    locationValue: calendar.location_value as string | null,
+    locationValue: locationValue as string | null,
   }
 }
 
 // ─── Gestión de citas (admin) ────────────────────────────────────────────────
 export async function cancelBooking(id: string) {
-  const booking = await queryOne<{ contact_id: string | null }>(
-    `update bookings set status = 'cancelled' where id = $1 returning contact_id`,
+  const booking = await queryOne<{ contact_id: string | null; google_event_id: string | null }>(
+    `update bookings set status = 'cancelled' where id = $1 returning contact_id, google_event_id`,
     [id]
   )
   if (!booking) return { error: 'Cita no encontrada' }
+
+  // Borra el evento del Google Calendar del admin (fail-open; 404 = ya borrado)
+  if (booking.google_event_id) {
+    await deleteGoogleEvent(booking.google_event_id)
+  }
 
   if (booking.contact_id) {
     await query(
@@ -366,8 +403,13 @@ export async function getRescheduleSlots(bookingId: string) {
 }
 
 export async function rescheduleBooking(bookingId: string, slotIso: string) {
-  const booking = await queryOne<{ id: string; calendar_id: string; contact_id: string | null }>(
-    'select id, calendar_id, contact_id from bookings where id = $1',
+  const booking = await queryOne<{
+    id: string
+    calendar_id: string
+    contact_id: string | null
+    google_event_id: string | null
+  }>(
+    'select id, calendar_id, contact_id, google_event_id from bookings where id = $1',
     [bookingId]
   )
   if (!booking) return { error: 'Cita no encontrada' }
@@ -390,6 +432,11 @@ export async function rescheduleBooking(bookingId: string, slotIso: string) {
   } catch (err) {
     if (isUniqueViolation(err)) return { error: 'Ese horario ya está ocupado' }
     return { error: (err as Error).message }
+  }
+
+  // Mueve el evento del Google Calendar a la nueva hora (mismo Meet; fail-open)
+  if (booking.google_event_id) {
+    await moveGoogleEvent(booking.google_event_id, startsAt.toISOString(), endsAt.toISOString())
   }
 
   if (booking.contact_id) {

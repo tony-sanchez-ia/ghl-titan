@@ -86,6 +86,7 @@ export interface Booking {
   location_type: LocationType | null
   location_value: string | null
   notes: string | null
+  google_event_id: string | null
   created_at: string
 }
 

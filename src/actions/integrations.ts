@@ -13,6 +13,7 @@ import {
   getMicrosoftClientId,
   type OutlookCalendar,
 } from '@/features/integrations/services/outlook-auth'
+import { deleteGoogleConnection } from '@/features/integrations/services/google-auth'
 
 /**
  * Enlace de Outlook por device code flow.
@@ -118,6 +119,15 @@ export async function disconnectOutlook(): Promise<{ success?: boolean; error?: 
   await deleteOutlookConnection()
   const cookieStore = await cookies()
   cookieStore.delete(DEVICE_COOKIE)
+  revalidatePath('/settings')
+  return { success: true }
+}
+
+export async function disconnectGoogle(): Promise<{ success?: boolean; error?: string }> {
+  const session = await getSession()
+  if (!session) return { error: 'No autenticado' }
+
+  await deleteGoogleConnection()
   revalidatePath('/settings')
   return { success: true }
 }

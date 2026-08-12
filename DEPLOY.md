@@ -37,6 +37,8 @@ leen al arrancar).
    EMAIL_ADMIN=titanicfactorymedia@gmail.com
    CRON_SECRET=<un token largo y secreto>
    MICROSOFT_CLIENT_ID=<app registration de Azure>   # Outlook free/busy en la agenda
+   GOOGLE_CLIENT_ID=<OAuth client de Google Cloud>    # Google Calendar + Meet por cita (PRP-017)
+   GOOGLE_CLIENT_SECRET=<secret del OAuth client>
    OPENROUTER_API_KEY=<tu key de openrouter.ai/keys>  # IA de funnels, sitios web y Asistente IA
    # OPENROUTER_ASSISTANT_MODEL=anthropic/claude-sonnet-4.6   # opcional: modelo del Asistente IA
    NODE_ENV=production
