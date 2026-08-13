@@ -1,8 +1,10 @@
 # PRP-016: Servidor MCP de GHL Titan (conexión para el Business OS)
 
-> Estado: **PREPARADO, NO EJECUTAR TODAVÍA** (2026-07-31). Tony lo activará cuando quiera,
-> idealmente DESPUÉS del deploy en VPS (URL estable + HTTPS). Decisiones ya tomadas con él
-> en conversación — no re-preguntar.
+> Estado: **COMPLETADO** (2026-08-13). Verificado E2E: 17/17 checks del protocolo +
+> cliente Claude Code real conectado (`claude mcp list` → ✔ Connected). Implementación
+> final: ruta única `src/app/api/mcp/route.ts` (mcp-handler 2.1, sin segmento [transport]),
+> capa compartida en `crm-data.ts` (el asistente del panel delega en ella).
+> PENDIENTE Tony: añadir `MCP_API_TOKEN` en EasyPanel + rebuild para activarlo en prod.
 
 ## Objetivo
 Que agentes externos de Tony (su "Business OS": un Claude Code local en su máquina) se

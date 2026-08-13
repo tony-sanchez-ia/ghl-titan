@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
     "@openrouter/ai-sdk-provider": "^3.0.0",
     "ai": "^7.0.16",
     "bcryptjs": "^3.0.3",
@@ -16,6 +17,7 @@
     "date-fns-tz": "^3.2.0",
     "jose": "^6.2.3",
     "lucide-react": "^1.18.0",
+    "mcp-handler": "^2.1.0",
     "next": "^16.0.0",
     "next-themes": "^0.4.6",
     "papaparse": "^5.5.3",

@@ -125,10 +125,14 @@
   archivos raíz (OOM); next-themes gatear todo tras `mounted`; Supabase relaciones embebidas → cast `as unknown as`.
 - Pendiente del usuario: verificar dominio Resend (emails a terceros), conectar Google Calendar (Meet por cita),
   configurar cron para /api/cron/process-emails, deploy en VPS+dominio.
-- PRP-016 PREPARADO sin ejecutar (2026-07-31): servidor MCP de GHL Titan para que el "Business OS" de Tony
-  (su Claude Code local) consulte prospectos y haga seguimiento. Decisiones CERRADAS: MCP (no REST), sin
-  pipeline (seguimiento por etiquetas), lectura + escrituras seguras (etiquetar dispara tag_added, notas),
-  nunca enviar/borrar, ejecutar idealmente tras el deploy VPS. Ver .claude/PRPs/prp-mcp-server.md.
+- PRP-016 COMPLETADO (2026-08-13): SERVIDOR MCP en /api/mcp (mcp-handler 2.1 + @modelcontextprotocol/server 2,
+  ruta única SIN segmento [transport], streamable HTTP stateless sin Redis). 8 tools: 5 lectura + etiquetar
+  (dispara fireTrigger('tag_added') + processDueEmails, activity en timeline), quitar_etiqueta, anadir_nota
+  (activity 'note'). Capa compartida crm-data.ts — los tools del asistente del panel ahora DELEGAN en ella.
+  Auth: Bearer MCP_API_TOKEN (timingSafeEqual; sin env → 401 todo). Verificado E2E: 17/17 checks JSON-RPC
+  (401, initialize, tools/list, lecturas y escrituras reales con huella en BD) + cliente Claude Code REAL
+  conectado (claude mcp add --transport http + list → ✔ Connected). Conexión del Business OS documentada en
+  DEPLOY.md. PENDIENTE Tony: MCP_API_TOKEN en EasyPanel + rebuild. Token local ya en .env.local.
 - OPENROUTER_API_KEY CONFIGURADA (2026-07-30): Tony la pegó como `OPENROUTER_APIKEY` (sin el guión bajo) →
   corregido a `OPENROUTER_API_KEY` en .env.local. Clave válida, con crédito (no free tier), y verificada
   contra la API: chat + generación ESTRUCTURADA (json_schema) OK con el modelo por defecto
@@ -153,6 +157,12 @@
   en Resend; EMAIL_FROM=Titanic Factory <no-reply@email.titanicfactory.com> en local y prod). Cron endpoint
   OK (200 con token/401 sin). Valores EasyPanel + URL del cron en .env.easypanel.local (gitignored).
   AUTH_SECRET de prod = el local (OBLIGATORIO: tokens Outlook cifrados con clave derivada de él).
+  GOTCHA cron-en-contenedor: Docker inyecta HOSTNAME=<container-id> PISANDO el ENV del Dockerfile;
+  Next standalone se bindea a ese hostname → localhost NO escucha dentro del contenedor. El wget del
+  entrypoint debe usar ${HOSTNAME} (fix 2026-08-13). El endpoint /api/cron siempre se puede disparar
+  a mano desde fuera con el CRON_SECRET para distinguir "endpoint roto" de "bucle no dispara".
+  CRON AUTOMÁTICO VERIFICADO en prod (2026-08-13): email de prueba salió SOLO tras el fix. OJO al
+  verificar el cron: las reservas/forms procesan la cola INLINE — pueden "robar" la prueba (pasó).
   PENDIENTE: programar el cron (opciones en .env.easypanel.local), dominios iatitans.com/trabajadoria.com
   (multidominio funnels/sitios, esperan un funnel/sitio asignado), y ANTES DE CANCELAR GHL: migrar el curso
   completo (GHL tiene 6 módulos, Titan solo 2 módulos/2 lecciones) + redirigir enlaces públicos viejos de
@@ -165,8 +175,11 @@
   + bookings.google_event_id (migración 0012, aplicada). Cancelar borra evento, reprogramar lo mueve.
   GOTCHAS NUEVOS (detalle en el PRP): redirects de rutas API SIEMPRE sobre NEXT_PUBLIC_SITE_URL (request.url
   normaliza el host y pierde cookies); route.ts no admite exports propios (constantes al servicio).
-  PENDIENTE Tony: alta en Google Cloud (publicar app "In production" o el token caduca a 7 días) →
-  GOOGLE_CLIENT_ID/SECRET → conectar en Ajustes de PRODUCCIÓN → prueba real.
+  ACTIVADO Y VERIFICADO E2E REAL (2026-08-13): Tony hizo el alta en Google Cloud, claves en EasyPanel,
+  conectó su cuenta (titanicfactorymedia@gmail.com) y la prueba real funcionó entera: reserva → evento
+  en su Google Calendar + Meet único (meet.google.com/yej-rbnb-wdx) + enlace en email → cancelar desde
+  el panel borró el evento. Datos de prueba limpiados. Las claves Google SOLO están en EasyPanel
+  (no en .env.local — en local la card sale "sin configurar", la conexión vive en la BD compartida).
 - GOTCHA checks: `npm run typecheck` NO existe y `npm run lint` está roto (Next 16 quitó next lint) →
   usar `npx tsc --noEmit`. Si el Playwright MCP está "already in use" (otro agente): script Node con el
   playwright del caché npx (~/.npm/_npx/*/node_modules) + executablePath a un chromium_headless_shell

@@ -41,11 +41,22 @@ leen al arrancar).
    GOOGLE_CLIENT_SECRET=<secret del OAuth client>
    OPENROUTER_API_KEY=<tu key de openrouter.ai/keys>  # IA de funnels, sitios web y Asistente IA
    # OPENROUTER_ASSISTANT_MODEL=anthropic/claude-sonnet-4.6   # opcional: modelo del Asistente IA
+   MCP_API_TOKEN=<openssl rand -hex 32>               # servidor MCP /api/mcp (sin él, apagado)
    NODE_ENV=production
    ```
    (Usa el **pooler host** de Neon en `DATABASE_URL` si esperas muchas conexiones; para una
    instancia única el host directo va bien.)
 8. **Deploy**.
+
+## Conectar un agente externo (Business OS) al MCP
+GHL Titan expone un servidor MCP en `/api/mcp` (PRP-016) con herramientas de CRM:
+buscar/ver contactos, resumen de audiencia, campañas (lectura), etiquetar (dispara
+automatizaciones), quitar etiqueta y añadir notas. Desde cualquier Claude Code:
+```
+claude mcp add --transport http ghl-titan https://tu-dominio.com/api/mcp \
+  --header "Authorization: Bearer <MCP_API_TOKEN>"
+```
+(En local/LAN: `http://192.168.1.20:<puerto>/api/mcp` con `next start`.)
 
 ## Tras el deploy
 - **Cron de automatizaciones**: va DENTRO del contenedor — `docker-entrypoint.sh` llama a
