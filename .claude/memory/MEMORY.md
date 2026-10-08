@@ -184,3 +184,12 @@
   usar `npx tsc --noEmit`. Si el Playwright MCP está "already in use" (otro agente): script Node con el
   playwright del caché npx (~/.npm/_npx/*/node_modules) + executablePath a un chromium_headless_shell
   de ~/.cache/ms-playwright (detalle en prp-outlook-freebusy.md).
+- GOTCHA NEON COSTE (2026-10-08): Tony veía ~$5/mes de compute en Neon SIN usar la app. Causa: el cron interno
+  (docker-entrypoint.sh, cada 300s) consultaba la BD cada 5 min = justo el umbral de scale-to-zero de Neon → la
+  BD NUNCA se dormía. Fix: cron-gate.ts (features/automations/services) — el cron salta la BD salvo que haya
+  habido queries en el proceso desde la última revisión (db.ts registra lastQueryAt), venza trabajo ya conocido
+  (min de scheduled_emails/enrollments/campañas) o pasen 6h (red de seguridad para cambios hechos desde LOCAL,
+  que comparte la BD). Verificado local: 1ª llamada procesa, siguientes {skipped:true}, visita a /book reactiva.
+  REGLA: nunca meter un poller que toque Neon con intervalo ≤5 min. Tablas vacías user/session/jwks/organization...
+  + conexión 'neon_auth' consultando project_config = Neon Auth activado en el proyecto (no lo usamos); si el
+  compute sigue sin dormirse tras el deploy, sospechar de eso.
