@@ -193,3 +193,5 @@
   REGLA: nunca meter un poller que toque Neon con intervalo ≤5 min. Tablas vacías user/session/jwks/organization...
   + conexión 'neon_auth' consultando project_config = Neon Auth activado en el proyecto (no lo usamos); si el
   compute sigue sin dormirse tras el deploy, sospechar de eso.
+  CONFIRMADO EN PROD (2026-10-08): tras rebuild en EasyPanel, Tony ve el compute de Neon a 0 en reposo.
+  Neon Auth NO impedía el scale-to-zero (no hace falta desactivarlo).
