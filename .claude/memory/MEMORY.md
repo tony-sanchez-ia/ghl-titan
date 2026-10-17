@@ -195,3 +195,10 @@
   compute sigue sin dormirse tras el deploy, sospechar de eso.
   CONFIRMADO EN PROD (2026-10-08): tras rebuild en EasyPanel, Tony ve el compute de Neon a 0 en reposo.
   Neon Auth NO impedía el scale-to-zero (no hace falta desactivarlo).
+- NUEVA INSTANCIA robotrock.live (2026-10-17): BD Neon nueva (ep-soft-fire-bale0zrf, eu-central-1) inicializada con
+  las 12 migraciones de db/migrations (aplicadas en orden, una transacción cada una, 32 tablas public) + admin
+  info@robotrock.live (login verificado con bcrypt). BD vacía de datos (0 contactos/calendarios/forms): calendario,
+  curso, etc. se crean desde el panel. Neon trae de serie el esquema neon_auth (no lo usamos, no molesta).
+  CÓMO inicializar otra instancia: scripts/run-sql.js y create-admin.js leen SOLO .env.local → para otra BD se usó
+  un script puntual con la URL por env. Quitar `channel_binding=require` de la URL (copiar de Neon la trae).
+  Pendiente Tony: env de EasyPanel de esa instancia (AUTH_SECRET/CRON_SECRET/MCP_API_TOKEN PROPIOS, nuevos).
