@@ -82,3 +82,6 @@ exports/
 
 # Artefactos de sesiones Playwright MCP (screenshots/logs de testing)
 .playwright-mcp/
+
+# Env de la instancia robotrock.live (secretos — NUNCA subir)
+.env.robot
