@@ -202,3 +202,8 @@
   CÓMO inicializar otra instancia: scripts/run-sql.js y create-admin.js leen SOLO .env.local → para otra BD se usó
   un script puntual con la URL por env. Quitar `channel_binding=require` de la URL (copiar de Neon la trae).
   Pendiente Tony: env de EasyPanel de esa instancia (AUTH_SECRET/CRON_SECRET/MCP_API_TOKEN PROPIOS, nuevos).
+- robotrock.live DESPLEGADA (2026-10-17) en EasyPanel, dominio temporal https://robotrockalive-apps-ghl-titan.1cdrz2.easypanel.host
+  (otro servidor). Valores en .env.robot (gitignored). `/` daba 404 porque NEXT_PUBLIC_SITE_URL no llegó al BUILD
+  (proxy reescribe a /sites/<host>; delator: header x-middleware-rewrite) → poner en Build Arguments + Deploy.
+  MCP verificado (401 sin token, initialize + 8 tools + resumen_audiencia OK) y registrado en Claude Code como
+  `robotrock-ghl` (scope local, ~/.claude.json, NO en el repo).
