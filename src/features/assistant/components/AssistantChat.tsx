@@ -9,6 +9,8 @@ import { ui } from '@/shared/lib/ui'
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  /** Aviso local de fallo: se muestra pero no se envía al modelo. */
+  error?: boolean
 }
 
 const SUGGESTIONS = [
@@ -63,7 +65,9 @@ export function AssistantChat() {
       const res = await fetch('/api/assistant/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({
+          messages: history.filter((m) => !m.error).map(({ role, content }) => ({ role, content })),
+        }),
       })
       if (!res.ok || !res.body) {
         const detail = await res.text().catch(() => '')
@@ -94,13 +98,16 @@ export function AssistantChat() {
       // La conversación puede haber creado borradores o memorias: refresca los datos del servidor
       router.refresh()
     } catch (err) {
+      // El mensaje rechazado no se queda en el historial: si no, bloquearía todos los envíos siguientes
       setMessages([
-        ...history,
+        ...messages,
         {
           role: 'assistant',
           content: `Ha fallado la conexión con el asistente (${(err as Error).message}). Prueba otra vez.`,
+          error: true,
         },
       ])
+      setInput(content)
     } finally {
       setLoading(false)
     }

@@ -217,6 +217,11 @@
   pestaña = nombre (template "%s — nombre"). getInstanceSettings() con cache() y fallback a defaults si la tabla no
   existe (deploy antes de migrar no rompe la lectura, pero GUARDAR en Ajustes sí falla). Feature en
   src/features/instance/ + src/actions/instance.ts. E2E real OK (next start, script Playwright).
-  PENDIENTE: aplicar 0013 en la BD de robotrock.live (Neon propia) + rebuild de ambas instancias en EasyPanel.
+  0013 aplicada también en robotrock.live (2026-11-06, Tony vía SQL Editor de Neon: el clasificador de auto mode
+  bloquea migraciones en BD de producción ajena → dar el SQL a Tony). Ambas instancias desplegadas.
 - GOTCHA shell: `pkill -f "<patrón>"` dentro de un comando Bash mata también a ESE shell (su línea contiene el
   patrón) → exit 144 y lo que venía detrás no se ejecuta. Parar servers por PID o en un comando aparte.
+- FIX ASISTENTE (2026-11-06): "Ha fallado la conexión con el asistente (Petición inválida)" NO era OpenRouter: era la
+  validación Zod de /api/assistant/chat (mensaje >8000 chars; Tony pegó un prompt de marca grande) y el mensaje rechazado
+  quedaba en el historial bloqueando todo envío posterior. Ahora: 30.000 chars/mensaje, se mandan los últimos 40
+  mensajes (sin máximo de historial), error explícito si se supera, y los avisos de error no entran en el historial.
