@@ -2,9 +2,10 @@ import Link from 'next/link'
 import { Plus, Zap, Mail } from 'lucide-react'
 import { ui } from '@/shared/lib/ui'
 import { listAutomations } from '@/features/automations/services/queries'
+import { getInstanceSettings } from '@/features/instance/services/instance-settings'
 
 export default async function AutomationsPage() {
-  const automations = await listAutomations()
+  const [automations, { modules }] = await Promise.all([listAutomations(), getInstanceSettings()])
 
   return (
     <div className="space-y-8">
@@ -51,12 +52,12 @@ export default async function AutomationsPage() {
         )}
       </section>
 
-      <div className={`${ui.card} p-4 text-sm text-muted`}>
+      {modules.forms && <div className={`${ui.card} p-4 text-sm text-muted`}>
         Los <strong className="text-fg">formularios</strong> de captación ahora viven en{' '}
         <Link href="/forms" className="text-primary hover:underline">Web → Formularios</Link>. Desde
         el editor de cada formulario puedes vincularlo a una secuencia, o elígelo como disparador al
         crear una secuencia.
-      </div>
+      </div>}
     </div>
   )
 }

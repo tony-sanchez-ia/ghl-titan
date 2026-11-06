@@ -17,6 +17,7 @@ import {
   getRecentContacts,
 } from '@/features/dashboard/services/queries'
 import { getSystemHealth, type HealthStatus } from '@/features/dashboard/services/health'
+import { getInstanceSettings, DEFAULT_BRAND_NAME } from '@/features/instance/services/instance-settings'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,7 +52,7 @@ function fmtDate(iso: string): string {
 }
 
 export default async function DashboardPage() {
-  const [contactsRow, bookingStats, health, recentContacts, recentBookings, automations] =
+  const [contactsRow, bookingStats, health, recentContacts, recentBookings, automations, instance] =
     await Promise.all([
       queryOne<{ count: string }>('select count(*) as count from contacts'),
       getBookingStats(),
@@ -59,6 +60,7 @@ export default async function DashboardPage() {
       getRecentContacts(10),
       getRecentBookings(10),
       getActiveAutomations(),
+      getInstanceSettings(),
     ])
 
   const stats = [
@@ -71,7 +73,7 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Inicio</h1>
-        <p className="mt-1 text-muted">Bienvenido a GHL Titan.</p>
+        <p className="mt-1 text-muted">Bienvenido a {instance.brandName ?? DEFAULT_BRAND_NAME}.</p>
       </div>
 
       {/* Salud del sistema */}

@@ -2,6 +2,9 @@ import { queryOne } from '@/lib/db'
 import { getSession } from '@/lib/auth/session'
 import { ProfileForm } from '@/features/settings/components/ProfileForm'
 import { PasswordForm } from '@/features/settings/components/PasswordForm'
+import { ModulesForm } from '@/features/settings/components/ModulesForm'
+import { BrandForm } from '@/features/settings/components/BrandForm'
+import { getInstanceSettings } from '@/features/instance/services/instance-settings'
 import { OutlookConnectionCard } from '@/features/integrations/components/OutlookConnectionCard'
 import { GoogleConnectionCard } from '@/features/integrations/components/GoogleConnectionCard'
 import { getOutlookConnection } from '@/features/integrations/services/outlook-auth'
@@ -13,7 +16,7 @@ export default async function SettingsPage({
   searchParams: Promise<{ google?: string }>
 }) {
   const session = await getSession()
-  const [user, outlook, google, params] = await Promise.all([
+  const [user, outlook, google, params, instance] = await Promise.all([
     session
       ? queryOne<{ full_name: string | null; email: string }>(
           'select full_name, email from users where id = $1',
@@ -23,6 +26,7 @@ export default async function SettingsPage({
     getOutlookConnection(),
     getGoogleConnection(),
     searchParams,
+    getInstanceSettings(),
   ])
 
   return (
@@ -34,6 +38,8 @@ export default async function SettingsPage({
 
       <ProfileForm fullName={user?.full_name ?? null} email={user?.email ?? ''} />
       <PasswordForm />
+      <BrandForm brand={instance} />
+      <ModulesForm modules={instance.modules} />
       <OutlookConnectionCard connection={outlook}>
         <GoogleConnectionCard
           connection={google}

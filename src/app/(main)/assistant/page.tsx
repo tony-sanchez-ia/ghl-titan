@@ -4,7 +4,7 @@ import { MemoryPanel } from '@/features/assistant/components/MemoryPanel'
 
 export const dynamic = 'force-dynamic'
 
-export const metadata = { title: 'Asistente IA — GHL Titan' }
+export const metadata = { title: 'Asistente IA' }
 
 export default async function AssistantPage() {
   const memories = await listMemories()

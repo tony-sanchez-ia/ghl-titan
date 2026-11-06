@@ -207,3 +207,16 @@
   (proxy reescribe a /sites/<host>; delator: header x-middleware-rewrite) → poner en Build Arguments + Deploy.
   MCP verificado (401 sin token, initialize + 8 tools + resumen_audiencia OK) y registrado en Claude Code como
   `robotrock-ghl` (scope local, ~/.claude.json, NO en el repo).
+- PRP-018 COMPLETADO (2026-11-06): INSTANCIA CONFIGURABLE — en Ajustes, tarjeta "Marca" (logo subido ≤500KB
+  png/jpg/webp/svg guardado en BD bytea, nombre de empresa, color de acento) y tarjeta "Módulos" (Cursos, Embudos,
+  Sitios web, Formularios ON/OFF). Tabla de UNA fila instance_settings (migración 0013, defaults todo ON/sin marca;
+  APLICADA en la BD compartida local+ghl.titanicfactory.com). Apagar = solo oculta del panel (sidebar + layouts de
+  sección con requireModule → /dashboard); lo público (/learn, /p, /w, /form, titan-forms.js) sigue vivo. Color: <style>
+  con --primary/--primary-fg (negro/blanco por luminancia)/--primary-soft solo en layouts (main) y (auth) → público y
+  emails intactos. Logo servido por /api/brand/logo (nosniff + CSP sandbox; SVG con script/on*= rechazado). Título
+  pestaña = nombre (template "%s — nombre"). getInstanceSettings() con cache() y fallback a defaults si la tabla no
+  existe (deploy antes de migrar no rompe la lectura, pero GUARDAR en Ajustes sí falla). Feature en
+  src/features/instance/ + src/actions/instance.ts. E2E real OK (next start, script Playwright).
+  PENDIENTE: aplicar 0013 en la BD de robotrock.live (Neon propia) + rebuild de ambas instancias en EasyPanel.
+- GOTCHA shell: `pkill -f "<patrón>"` dentro de un comando Bash mata también a ESE shell (su línea contiene el
+  patrón) → exit 144 y lo que venía detrás no se ejecuta. Parar servers por PID o en un comando aparte.
