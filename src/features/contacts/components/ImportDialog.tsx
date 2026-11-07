@@ -12,15 +12,20 @@ interface Props {
 }
 
 interface Result {
+  format: 'ghl' | 'brevo'
   total: number
   newCount: number
   updateCount: number
+  unsubscribedBlocklisted: number
+  unsubscribedNotSubscribed: number
+  discarded: number
 }
 
 export function ImportDialog({ open, onClose }: Props) {
   const router = useRouter()
   const fileRef = useRef<HTMLInputElement>(null)
   const [fileName, setFileName] = useState<string | null>(null)
+  const [tags, setTags] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<Result | null>(null)
@@ -37,22 +42,29 @@ export function ImportDialog({ open, onClose }: Props) {
     setError(null)
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('tags', tags)
     const res = await importContactsFromCsv(formData)
     setLoading(false)
     if (res.error) {
       setError(res.error)
       return
     }
+    const brevo = res.format === 'brevo' ? res : null
     setResult({
+      format: res.format ?? 'ghl',
       total: res.total ?? 0,
       newCount: res.newCount ?? 0,
       updateCount: res.updateCount ?? 0,
+      unsubscribedBlocklisted: brevo?.unsubscribedBlocklisted ?? 0,
+      unsubscribedNotSubscribed: brevo?.unsubscribedNotSubscribed ?? 0,
+      discarded: brevo?.discarded ?? 0,
     })
     router.refresh()
   }
 
   function close() {
     setFileName(null)
+    setTags('')
     setError(null)
     setResult(null)
     setLoading(false)
@@ -63,7 +75,7 @@ export function ImportDialog({ open, onClose }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className={`${ui.card} w-full max-w-md p-6`}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Importar de GoHighLevel</h2>
+          <h2 className="text-lg font-semibold">Importar contactos</h2>
           <button onClick={close} aria-label="Cerrar" className="text-muted hover:text-fg">
             <X size={20} />
           </button>
@@ -79,6 +91,24 @@ export function ImportDialog({ open, onClose }: Props) {
               <li>Total procesados: <span className="text-fg font-medium">{result.total}</span></li>
               <li>Nuevos: <span className="text-fg font-medium">{result.newCount}</span></li>
               <li>Actualizados: <span className="text-fg font-medium">{result.updateCount}</span></li>
+              {result.format === 'brevo' && (
+                <>
+                  <li>
+                    Dados de baja (bloqueados en Brevo):{' '}
+                    <span className="text-fg font-medium">{result.unsubscribedBlocklisted}</span>
+                  </li>
+                  <li>
+                    Dados de baja (no suscritos a email en Brevo):{' '}
+                    <span className="text-fg font-medium">{result.unsubscribedNotSubscribed}</span>
+                  </li>
+                  {result.discarded > 0 && (
+                    <li>
+                      Filas descartadas (sin email válido):{' '}
+                      <span className="text-fg font-medium">{result.discarded}</span>
+                    </li>
+                  )}
+                </>
+              )}
             </ul>
             <button onClick={close} className={`${ui.buttonPrimary} w-full px-4 py-2.5`}>
               Cerrar
@@ -87,8 +117,8 @@ export function ImportDialog({ open, onClose }: Props) {
         ) : (
           <div className="space-y-4">
             <p className="text-sm text-muted">
-              Sube el CSV exportado de GoHighLevel. Los contactos se deduplican
-              automáticamente: reimportar no crea duplicados.
+              Admite exportaciones de GoHighLevel y de Brevo (se detecta solo). Los contactos se
+              deduplican automáticamente: reimportar no crea duplicados ni borra datos.
             </p>
 
             <label className="block">
@@ -106,6 +136,20 @@ export function ImportDialog({ open, onClose }: Props) {
                 onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
               />
             </label>
+
+            <div>
+              <label htmlFor="import_tags" className="block text-sm font-medium mb-1">
+                Etiqueta para todos los importados
+              </label>
+              <input
+                id="import_tags"
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                placeholder="Ej.: Compradores 2025 concierto Barcelona Razzmatazz"
+                className={ui.input}
+              />
+              <p className="text-xs text-muted mt-1">Opcional. Varias separadas por comas.</p>
+            </div>
 
             {error && <p className="text-sm text-red-600">{error}</p>}
 

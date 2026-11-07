@@ -225,3 +225,18 @@
   validación Zod de /api/assistant/chat (mensaje >8000 chars; Tony pegó un prompt de marca grande) y el mensaje rechazado
   quedaba en el historial bloqueando todo envío posterior. Ahora: 30.000 chars/mensaje, se mandan los últimos 40
   mensajes (sin máximo de historial), error explícito si se supera, y los avisos de error no entran en el historial.
+- PRP-019 COMPLETADO (2026-11-07): INICIO ESTILO BREVO + AGENDA ACTIVABLE + APERTURAS + IMPORTADOR BREVO.
+  Migración 0014 (module_calendars, campaign_recipients.opened_at, email_campaigns.opens_tracked,
+  scheduled_emails.opened_at, índice lower(email)) APLICADA en la BD compartida. Agenda = módulo 'calendars'
+  (como PRP-018; /book sigue vivo). Ajustes: interruptores (shared/components/switch.tsx, role=switch) + tarjeta
+  Salud del sistema (movida del Inicio). Inicio nuevo: "Hola, {nombre}", calendario de envíos (?month&day, días en
+  Europe/Madrid; programadas por scheduled_at, enviadas por started_at porque al arrancar scheduled_at=null),
+  sugerencias (formularios solo si módulo ON), últimas campañas (apertura/clics; conversiones "—" decisión Tony),
+  Tus contactos, citas solo con Agenda ON. Aperturas: píxel /o/[token] (= click_token; GIF siempre, no-store) en
+  campaign-engine y email-engine, NUNCA en /e, preview ni prueba; /r marca también opened_at; campañas anteriores
+  (opens_tracked=false) muestran "—". Importador: detecta Brevo (';' + EMAIL/CONTACT ID), dd-mm-yyyy, bloqueados y
+  NO suscritos a email → dados de baja (decisión Tony), dedup por lower(email), existentes solo rellenan vacíos +
+  suman etiqueta, por lotes de 500 (2.483 filas en 1,4 s). Etiqueta común también en GHL. Importar NO dispara
+  automatizaciones de etiqueta (evita emails masivos). Para Robot Rock: Tony importa el export de Brevo desde
+  Contactos → Importar con etiqueta "Compradores 2025 concierto Barcelona Razzmatazz".
+  ORDEN DEPLOY: SQL 0014 en Neon de Robot Rock ANTES de push/deploy (Inicio y Marketing leen opened_at).

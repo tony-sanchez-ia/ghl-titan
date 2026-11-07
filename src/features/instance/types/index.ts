@@ -1,4 +1,4 @@
-export const MODULE_KEYS = ['courses', 'funnels', 'websites', 'forms'] as const
+export const MODULE_KEYS = ['calendars', 'courses', 'funnels', 'websites', 'forms'] as const
 export type ModuleKey = (typeof MODULE_KEYS)[number]
 
 export type InstanceSettings = {

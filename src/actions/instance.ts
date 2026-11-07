@@ -15,6 +15,7 @@ import { detectLogoMime, MAX_LOGO_BYTES } from '@/features/instance/lib/logo'
 type Result = { success: true } | { error: string }
 
 const modulesSchema = z.object({
+  calendars: z.boolean(),
   courses: z.boolean(),
   funnels: z.boolean(),
   websites: z.boolean(),
@@ -30,9 +31,9 @@ export async function updateModules(input: z.infer<typeof modulesSchema>): Promi
   await query(
     `update instance_settings
         set module_courses = $1, module_funnels = $2, module_websites = $3, module_forms = $4,
-            updated_at = now()
+            module_calendars = $5, updated_at = now()
       where id = true`,
-    [m.courses, m.funnels, m.websites, m.forms]
+    [m.courses, m.funnels, m.websites, m.forms, m.calendars]
   )
   revalidatePath('/', 'layout')
   return { success: true }

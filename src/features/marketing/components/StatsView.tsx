@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { MousePointerClick } from 'lucide-react'
+import { MailOpen, MousePointerClick } from 'lucide-react'
 import { ui } from '@/shared/lib/ui'
 import type { CampaignListItem, RecipientRow } from '../services/queries'
 
@@ -15,6 +15,10 @@ const RECIPIENT_LABEL: Record<string, string> = {
   failed: 'Fallido',
   skipped: 'Omitido',
 }
+
+export const OPENS_NOTE =
+  'Las aperturas son orientativas: Apple Mail abre los emails automáticamente, así que el índice real suele ser algo menor.'
+export const NOT_TRACKED = 'Esta campaña se envió antes de medir aperturas'
 
 const pct = (n: number, total: number) => (total > 0 ? Math.round((n / total) * 100) : 0)
 
@@ -58,9 +62,13 @@ export function StatsView({
       recipients: acc.recipients + c.recipients,
       sent: acc.sent + c.sent,
       clicks: acc.clicks + c.clicks,
+      opens: acc.opens + c.opens,
+      trackedSent: acc.trackedSent + (c.opens_tracked ? c.sent : 0),
     }),
-    { recipients: 0, sent: 0, clicks: 0 }
+    { recipients: 0, sent: 0, clicks: 0, opens: 0, trackedSent: 0 }
   )
+  const anyTracked = scope.some((c) => c.opens_tracked)
+  const fmtTime = (iso: string) => new Date(iso).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })
 
   return (
     <div className="space-y-6">
@@ -92,10 +100,17 @@ export function StatsView({
         <h2 className="font-semibold mb-1">Resumen de interacciones</h2>
         <FunnelBar label="Destinatarios" value={totals.recipients} total={totals.recipients} opacity={0.35} />
         <FunnelBar label="Entregados" value={totals.sent} total={totals.recipients} opacity={0.65} />
+        {anyTracked && <FunnelBar label="Con apertura" value={totals.opens} total={totals.recipients} opacity={0.85} />}
         <FunnelBar label="Con click" value={totals.clicks} total={totals.recipients} opacity={1} />
         <p className="text-xs text-muted pt-1">
           Tasa de clicks sobre entregados: <strong>{pct(totals.clicks, totals.sent)}%</strong>
+          {anyTracked && (
+            <>
+              {' '}· Tasa de apertura: <strong>{pct(totals.opens, totals.trackedSent)}%</strong>
+            </>
+          )}
         </p>
+        <p className="text-xs text-muted">{OPENS_NOTE}</p>
       </div>
 
       {/* Tabla por campaña */}
@@ -109,6 +124,7 @@ export function StatsView({
               <th className="px-4 py-3 font-medium text-right">Enviados</th>
               <th className="px-4 py-3 font-medium text-right">Fallidos</th>
               <th className="px-4 py-3 font-medium text-right">Omitidos</th>
+              <th className="px-4 py-3 font-medium text-right">Aperturas</th>
               <th className="px-4 py-3 font-medium text-right">Clicks</th>
               <th className="px-4 py-3 font-medium text-right">Tasa</th>
             </tr>
@@ -126,6 +142,9 @@ export function StatsView({
                 <td className="px-4 py-3 text-right">{c.sent}</td>
                 <td className="px-4 py-3 text-right">{c.failed}</td>
                 <td className="px-4 py-3 text-right">{c.skipped}</td>
+                <td className="px-4 py-3 text-right" title={c.opens_tracked ? undefined : NOT_TRACKED}>
+                  {c.opens_tracked ? `${c.opens} (${pct(c.opens, c.sent)}%)` : '—'}
+                </td>
                 <td className="px-4 py-3 text-right">{c.clicks}</td>
                 <td className="px-4 py-3 text-right font-medium">{pct(c.clicks, c.sent)}%</td>
               </tr>
@@ -146,6 +165,7 @@ export function StatsView({
                 <th className="px-4 py-2.5 font-medium">Contacto</th>
                 <th className="px-4 py-2.5 font-medium">Email</th>
                 <th className="px-4 py-2.5 font-medium">Estado</th>
+                <th className="px-4 py-2.5 font-medium">Abierto</th>
                 <th className="px-4 py-2.5 font-medium">Click</th>
               </tr>
             </thead>
@@ -162,6 +182,16 @@ export function StatsView({
                     {RECIPIENT_LABEL[r.status] ?? r.status}
                     {r.status === 'failed' && r.error && (
                       <span className="block text-xs text-red-600 truncate max-w-60" title={r.error}>{r.error}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {r.opened_at ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <MailOpen size={14} className="text-muted" />
+                        {fmtTime(r.opened_at)}
+                      </span>
+                    ) : (
+                      <span className="text-muted" title={selected.opens_tracked ? undefined : NOT_TRACKED}>—</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5">

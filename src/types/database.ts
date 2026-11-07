@@ -443,6 +443,8 @@ export interface EmailCampaign {
   scheduled_at: string | null
   started_at: string | null
   completed_at: string | null
+  /** true si se envió con píxel de apertura (PRP-019); las antiguas no miden aperturas */
+  opens_tracked: boolean
   created_at: string
   updated_at: string
 }
@@ -459,6 +461,7 @@ export interface CampaignRecipient {
   error: string | null
   click_token: string
   clicked_at: string | null
+  opened_at: string | null
   created_at: string
 }
 
@@ -489,6 +492,7 @@ export interface ScheduledEmail {
   error: string | null
   click_token: string | null
   clicked_at: string | null
+  opened_at: string | null
   created_at: string
 }
 

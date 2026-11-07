@@ -5,6 +5,8 @@ import { PasswordForm } from '@/features/settings/components/PasswordForm'
 import { ModulesForm } from '@/features/settings/components/ModulesForm'
 import { BrandForm } from '@/features/settings/components/BrandForm'
 import { getInstanceSettings } from '@/features/instance/services/instance-settings'
+import { SystemHealthCard } from '@/features/settings/components/SystemHealthCard'
+import { getSystemHealth } from '@/features/dashboard/services/health'
 import { OutlookConnectionCard } from '@/features/integrations/components/OutlookConnectionCard'
 import { GoogleConnectionCard } from '@/features/integrations/components/GoogleConnectionCard'
 import { getOutlookConnection } from '@/features/integrations/services/outlook-auth'
@@ -16,7 +18,7 @@ export default async function SettingsPage({
   searchParams: Promise<{ google?: string }>
 }) {
   const session = await getSession()
-  const [user, outlook, google, params, instance] = await Promise.all([
+  const [user, outlook, google, params, instance, health] = await Promise.all([
     session
       ? queryOne<{ full_name: string | null; email: string }>(
           'select full_name, email from users where id = $1',
@@ -27,6 +29,7 @@ export default async function SettingsPage({
     getGoogleConnection(),
     searchParams,
     getInstanceSettings(),
+    getSystemHealth(),
   ])
 
   return (
@@ -36,6 +39,7 @@ export default async function SettingsPage({
         <p className="mt-1 text-muted">Tu perfil y la configuración de la instancia.</p>
       </div>
 
+      <SystemHealthCard health={health} />
       <ProfileForm fullName={user?.full_name ?? null} email={user?.email ?? ''} />
       <PasswordForm />
       <BrandForm brand={instance} />

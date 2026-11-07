@@ -38,7 +38,9 @@ export async function GET(
 
   // Registra el click solo la primera vez
   const first = await queryOne<{ id: string }>(
-    'update scheduled_emails set clicked_at = now() where id = $1 and clicked_at is null returning id',
+    // un click implica apertura (aunque el cliente de correo no cargara el píxel)
+    `update scheduled_emails set clicked_at = now(), opened_at = coalesce(opened_at, now())
+     where id = $1 and clicked_at is null returning id`,
     [email.id]
   )
   if (first) {
@@ -88,7 +90,8 @@ async function handleCampaignClick(request: Request, token: string) {
   const destination = (requested && allowed.includes(requested) ? requested : allowed[0]) ?? null
 
   const first = await queryOne<{ id: string }>(
-    'update campaign_recipients set clicked_at = now() where id = $1 and clicked_at is null returning id',
+    `update campaign_recipients set clicked_at = now(), opened_at = coalesce(opened_at, now())
+     where id = $1 and clicked_at is null returning id`,
     [recipient.id]
   )
   if (first) {

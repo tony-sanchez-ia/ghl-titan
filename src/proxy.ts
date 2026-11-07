@@ -5,7 +5,7 @@ import { SESSION_COOKIE, verifySessionToken } from '@/lib/auth/jwt'
 const RESERVED_SEGMENTS = new Set([
   'api', 'login', 'signup', 'dashboard', 'contacts', 'calendars', 'courses',
   'automations', 'marketing', 'funnels', 'forms', 'settings', 'book', 'form', 'learn',
-  'unsubscribe', 'p', 'r', 'e', 'sites', 'websites', 'w', 'assistant',
+  'unsubscribe', 'p', 'r', 'e', 'o', 'sites', 'websites', 'w', 'assistant',
 ])
 
 const VISITOR_COOKIE_OPTS = {

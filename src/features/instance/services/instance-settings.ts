@@ -10,46 +10,48 @@ const DEFAULTS: InstanceSettings = {
   brandName: null,
   accentColor: null,
   logoVersion: null,
-  modules: { courses: true, funnels: true, websites: true, forms: true },
+  modules: { calendars: true, courses: true, funnels: true, websites: true, forms: true },
 }
 
-type Row = {
+/** Fila leída como JSON: una columna nueva que aún no exista (deploy antes de migrar) llega undefined. */
+type Row = Partial<{
   brand_name: string | null
   accent_color: string | null
-  logo_updated_at: Date | null
+  logo_updated_at: string | null
+  module_calendars: boolean
   module_courses: boolean
   module_funnels: boolean
   module_websites: boolean
   module_forms: boolean
-}
+}>
 
 /**
  * Ajustes de la instancia (una query por request gracias a cache()).
  * NUNCA lee logo_data: los bytes solo los sirve /api/brand/logo.
- * Si la tabla aún no existe (deploy antes de migrar) → defaults: todo ON, sin marca.
+ * Tolerante a migraciones pendientes: tabla ausente → defaults; columna ausente → módulo ON.
  */
 export const getInstanceSettings = cache(async (): Promise<InstanceSettings> => {
   let row: Row | null
   try {
-    row = await queryOne<Row>(
-      `select brand_name, accent_color, logo_updated_at,
-              module_courses, module_funnels, module_websites, module_forms
-         from instance_settings where id = true`
+    const res = await queryOne<{ j: Row }>(
+      `select to_jsonb(s) - 'logo_data' as j from instance_settings s where id = true`
     )
+    row = res?.j ?? null
   } catch (err) {
     if ((err as { code?: string }).code === '42P01') return DEFAULTS
     throw err
   }
   if (!row) return DEFAULTS
   return {
-    brandName: row.brand_name,
-    accentColor: row.accent_color,
-    logoVersion: row.logo_updated_at ? row.logo_updated_at.getTime() : null,
+    brandName: row.brand_name ?? null,
+    accentColor: row.accent_color ?? null,
+    logoVersion: row.logo_updated_at ? new Date(row.logo_updated_at).getTime() : null,
     modules: {
-      courses: row.module_courses,
-      funnels: row.module_funnels,
-      websites: row.module_websites,
-      forms: row.module_forms,
+      calendars: row.module_calendars ?? true,
+      courses: row.module_courses ?? true,
+      funnels: row.module_funnels ?? true,
+      websites: row.module_websites ?? true,
+      forms: row.module_forms ?? true,
     },
   }
 })

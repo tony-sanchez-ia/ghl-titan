@@ -82,21 +82,6 @@ export async function listUpcomingBookings(
   return rows.map(toBookingWithCalendar)
 }
 
-/** [admin] Conteos para los tiles del dashboard. */
-export async function getBookingStats(): Promise<{
-  upcoming: number
-  thisMonth: number
-}> {
-  const row = await queryOne<{ upcoming: string; this_month: string }>(
-    `select
-       count(*) filter (where starts_at >= now()) as upcoming,
-       count(*) filter (where starts_at >= date_trunc('month', now())
-                          and starts_at < date_trunc('month', now()) + interval '1 month') as this_month
-     from bookings where status = 'confirmed'`
-  )
-  return { upcoming: Number(row?.upcoming ?? 0), thisMonth: Number(row?.this_month ?? 0) }
-}
-
 export type BookingFilter = 'upcoming' | 'past' | 'cancelled'
 
 /** [admin] Lista citas según filtro, con su calendario. */

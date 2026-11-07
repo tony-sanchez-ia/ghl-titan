@@ -60,8 +60,10 @@ export function renderEmailHtml(opts: {
   unsubscribeUrl: string | null
   rewriteUrl?: (url: string) => string
   viewInBrowserUrl?: string | null
+  /** Píxel de apertura (/o/[token]). Solo en envíos reales, nunca en preview/prueba/navegador. */
+  openPixelUrl?: string | null
 }): string {
-  const { design, merge, unsubscribeUrl, viewInBrowserUrl } = opts
+  const { design, merge, unsubscribeUrl, viewInBrowserUrl, openPixelUrl } = opts
   const rewrite = opts.rewriteUrl ?? ((u: string) => u)
   const styles = design.styles
 
@@ -109,5 +111,6 @@ export function renderEmailHtml(opts: {
       </table>
     </td></tr>
   </table>
+  ${openPixelUrl ? `<img src="${esc(openPixelUrl)}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px">` : ''}
 </body></html>`
 }

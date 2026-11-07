@@ -230,7 +230,7 @@ export async function sendCampaign(
   const updated = await query(
     `update email_campaigns
      set html_snapshot = $1, link_urls = $2, audience = $3, status = 'sending',
-         scheduled_at = null, started_at = now(), updated_at = now()
+         scheduled_at = null, started_at = now(), opens_tracked = true, updated_at = now()
      where id = $4 and status in ('draft', 'scheduled') returning id`,
     [html, linkUrls, JSON.stringify(audience), id]
   )

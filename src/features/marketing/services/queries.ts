@@ -15,17 +15,20 @@ export interface CampaignListItem {
   skipped: number
   pending: number
   clicks: number
+  opens: number
+  opens_tracked: boolean
 }
 
 export async function listCampaigns(): Promise<CampaignListItem[]> {
   return query<CampaignListItem>(
-    `select c.id, c.name, c.subject, c.status, c.scheduled_at, c.started_at, c.updated_at,
+    `select c.id, c.name, c.subject, c.status, c.scheduled_at, c.started_at, c.updated_at, c.opens_tracked,
             count(r.id)::int as recipients,
             count(r.id) filter (where r.status = 'sent')::int as sent,
             count(r.id) filter (where r.status = 'failed')::int as failed,
             count(r.id) filter (where r.status = 'skipped')::int as skipped,
             count(r.id) filter (where r.status = 'pending')::int as pending,
-            count(r.id) filter (where r.clicked_at is not null)::int as clicks
+            count(r.id) filter (where r.clicked_at is not null)::int as clicks,
+            count(r.id) filter (where r.opened_at is not null)::int as opens
      from email_campaigns c
      left join campaign_recipients r on r.campaign_id = c.id
      group by c.id
@@ -40,6 +43,7 @@ export interface RecipientRow {
   status: string
   sent_at: string | null
   clicked_at: string | null
+  opened_at: string | null
   error: string | null
   first_name: string | null
   last_name: string | null
@@ -48,7 +52,7 @@ export interface RecipientRow {
 /** Destinatarios de una campaña con el nombre del contacto (para el detalle de estadísticas). */
 export async function listCampaignRecipients(campaignId: string): Promise<RecipientRow[]> {
   return query<RecipientRow>(
-    `select r.id, r.contact_id, r.to_email, r.status, r.sent_at, r.clicked_at, r.error,
+    `select r.id, r.contact_id, r.to_email, r.status, r.sent_at, r.clicked_at, r.opened_at, r.error,
             c.first_name, c.last_name
      from campaign_recipients r
      left join contacts c on c.id = r.contact_id

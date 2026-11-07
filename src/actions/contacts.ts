@@ -3,7 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { query, queryOne } from '@/lib/db'
-import { parseGhlCsv } from '@/features/contacts/services/csv-import'
+import { detectCsvFormat, parseBrevoCsv, parseGhlCsv } from '@/features/contacts/services/csv-import'
+import { importBrevoContacts } from '@/features/contacts/services/brevo-import'
+import { getSession } from '@/lib/auth/session'
 import { fireTrigger } from '@/features/automations/services/engine'
 import { processDueEmails } from '@/features/automations/services/email-engine'
 
@@ -138,13 +140,35 @@ export async function deleteContact(id: string): Promise<{ success?: boolean; er
   return { success: true }
 }
 
+/** Etiqueta(s) comunes del importador: separadas por coma, recortadas, sin repetir. */
+const importTagsSchema = z
+  .string()
+  .transform((v) => Array.from(new Set(v.split(',').map((t) => t.trim()).filter(Boolean))))
+  .pipe(z.array(z.string().max(60, 'Cada etiqueta admite como máximo 60 caracteres')).max(10, 'Máximo 10 etiquetas'))
+
 export async function importContactsFromCsv(formData: FormData) {
+  if (!(await getSession())) return { error: 'No autenticado' }
   const file = formData.get('file')
   if (!(file instanceof File)) {
     return { error: 'No se recibió ningún archivo' }
   }
+  const tagsParsed = importTagsSchema.safeParse(String(formData.get('tags') ?? ''))
+  if (!tagsParsed.success) return { error: tagsParsed.error.issues[0]?.message ?? 'Etiquetas no válidas' }
+  const commonTags = tagsParsed.data
 
   const content = await file.text()
+
+  if (detectCsvFormat(content) === 'brevo') {
+    const parsed = parseBrevoCsv(content)
+    if (parsed.rows.length === 0) {
+      return { error: 'El CSV de Brevo no contiene emails válidos', importErrors: parsed.errors }
+    }
+    const res = await importBrevoContacts(parsed.rows, commonTags)
+    revalidatePath('/contacts')
+    revalidatePath('/dashboard')
+    return { success: true, format: 'brevo' as const, ...res, discarded: parsed.discarded, importErrors: parsed.errors }
+  }
+
   const { rows, errors } = parseGhlCsv(content)
 
   if (rows.length === 0) {
@@ -182,7 +206,7 @@ export async function importContactsFromCsv(formData: FormData) {
         r.email,
         r.phone,
         r.business_name,
-        r.tags,
+        Array.from(new Set([...r.tags, ...commonTags])),
         r.last_activity_at,
       ]
     )
@@ -205,6 +229,7 @@ export async function importContactsFromCsv(formData: FormData) {
 
   return {
     success: true,
+    format: 'ghl' as const,
     total: rows.length,
     newCount: rows.length - existingSet.size,
     updateCount: existingSet.size,

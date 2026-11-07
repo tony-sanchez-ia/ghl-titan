@@ -83,3 +83,104 @@ export function parseGhlCsv(content: string): {
 
   return { rows, errors }
 }
+
+// ── Brevo (PRP-019) ─────────────────────────────────────────────────────────
+
+export type CsvFormat = 'ghl' | 'brevo'
+
+/** Brevo exporta con ';' y columnas EMAIL + CONTACT ID / _BLOCKLISTED. Si no, se asume GHL. */
+export function detectCsvFormat(content: string): CsvFormat {
+  const header = content.replace(/^﻿/, '').split(/\r?\n/, 1)[0].toUpperCase()
+  const cols = header.split(';').map((c) => c.trim())
+  return cols.includes('EMAIL') && (cols.includes('CONTACT ID') || cols.includes('_BLOCKLISTED'))
+    ? 'brevo'
+    : 'ghl'
+}
+
+export type UnsubscribeReason = 'blocklisted' | 'not_subscribed'
+
+export interface BrevoContactRow {
+  email: string // minúsculas y sin espacios
+  first_name: string | null
+  last_name: string | null
+  phone: string | null
+  added_at: string | null // ISO
+  unsubscribe: UnsubscribeReason | null
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/** ADDED_TIME de Brevo: dd-mm-yyyy (opcional HH:mm[:ss]). new Date() lo leería como mm-dd. */
+function parseBrevoDate(value: string | undefined): string | null {
+  const m = (value ?? '').trim().match(/^(\d{2})-(\d{2})-(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/)
+  if (!m) return null
+  const [, dd, mm, yyyy, hh = '12', mi = '00', ss = '00'] = m
+  const d = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}Z`)
+  return Number.isNaN(d.getTime()) ? null : d.toISOString()
+}
+
+/** _BLOCKLISTED vacío, false, 0, no o [] = no bloqueado. */
+function isBlocklisted(value: string | undefined): boolean {
+  const v = (value ?? '').trim().toLowerCase()
+  return v !== '' && !['false', '0', 'no', '[]'].includes(v)
+}
+
+/**
+ * Parsea un export de Brevo. Fusiona emails repetidos dentro del fichero
+ * (primer valor no vacío gana; una baja en cualquiera de las filas manda).
+ */
+export function parseBrevoCsv(content: string): {
+  rows: BrevoContactRow[]
+  discarded: number
+  errors: string[]
+} {
+  const errors: string[] = []
+  const result = Papa.parse<Record<string, string>>(content, {
+    header: true,
+    delimiter: ';',
+    skipEmptyLines: true,
+    transformHeader: (h) => h.replace(/^﻿/, '').trim().toUpperCase(),
+  })
+  for (const e of result.errors.slice(0, 5)) errors.push(`Fila ${e.row}: ${e.message}`)
+
+  const hasSubscribedCol = result.meta.fields?.includes('_SUBSCRIBED') ?? false
+  const byEmail = new Map<string, BrevoContactRow>()
+  let discarded = 0
+
+  for (const raw of result.data) {
+    const email = (raw['EMAIL'] ?? '').trim().toLowerCase()
+    if (!EMAIL_RE.test(email)) {
+      discarded++
+      continue
+    }
+    let unsubscribe: UnsubscribeReason | null = null
+    if (isBlocklisted(raw['_BLOCKLISTED'])) unsubscribe = 'blocklisted'
+    else if (hasSubscribedCol && !(raw['_SUBSCRIBED'] ?? '').toLowerCase().includes('email_marketing')) {
+      unsubscribe = 'not_subscribed'
+    }
+    const row: BrevoContactRow = {
+      email,
+      first_name: clean(raw['NOMBRE']),
+      last_name: clean(raw['APELLIDOS']),
+      phone: clean(raw['SMS']) ?? clean(raw['WHATSAPP']) ?? clean(raw['LANDLINE_NUMBER']),
+      added_at: parseBrevoDate(raw['ADDED_TIME']),
+      unsubscribe,
+    }
+    const prev = byEmail.get(email)
+    byEmail.set(
+      email,
+      prev
+        ? {
+            email,
+            first_name: prev.first_name ?? row.first_name,
+            last_name: prev.last_name ?? row.last_name,
+            phone: prev.phone ?? row.phone,
+            added_at: prev.added_at ?? row.added_at,
+            unsubscribe: prev.unsubscribe === 'blocklisted' ? 'blocklisted' : (row.unsubscribe ?? prev.unsubscribe),
+          }
+        : row
+    )
+  }
+
+  return { rows: Array.from(byEmail.values()), discarded, errors }
+}

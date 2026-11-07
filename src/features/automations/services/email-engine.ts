@@ -26,6 +26,10 @@ function shell(subject: string, bodyText: string, clickToken?: string | null): s
       return `<a href="${href}" style="color:#2563eb">${url}</a>`
     })
     .replace(/\n/g, '<br>')
+  const pixel =
+    clickToken && base
+      ? `<img src="${base}/o/${clickToken}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px">`
+      : ''
   return `<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0f172a">
     <div style="max-width:520px;margin:0 auto;padding:32px 16px">
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:28px">
@@ -34,6 +38,7 @@ function shell(subject: string, bodyText: string, clickToken?: string | null): s
       </div>
       <p style="text-align:center;color:#94a3b8;font-size:12px;margin-top:16px">Enviado por GHL Titan</p>
     </div>
+    ${pixel}
   </body></html>`
 }
 
@@ -113,6 +118,7 @@ export async function processDueEmails(): Promise<{
               ? `${base}/unsubscribe/${email.contact_unsubscribe_token}`
               : null,
           rewriteUrl,
+          openPixelUrl: email.click_token && base ? `${base}/o/${email.click_token}` : null,
         })
       } else {
         html = shell(

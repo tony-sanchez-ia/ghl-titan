@@ -14,7 +14,7 @@ type NavItem = { href: string; label: string; icon: LucideIcon; module?: ModuleK
 const NAV_MAIN: NavItem[] = [
   { href: '/dashboard', label: 'Inicio', icon: LayoutDashboard },
   { href: '/contacts', label: 'Contactos', icon: Users },
-  { href: '/calendars', label: 'Agenda', icon: Calendar },
+  { href: '/calendars', label: 'Agenda', icon: Calendar, module: 'calendars' },
   { href: '/courses', label: 'Cursos', icon: GraduationCap, module: 'courses' },
   { href: '/automations', label: 'Automatizaciones', icon: Zap },
   { href: '/marketing', label: 'Marketing', icon: Megaphone },

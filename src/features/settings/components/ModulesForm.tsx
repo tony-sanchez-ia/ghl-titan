@@ -3,9 +3,11 @@
 import { useState } from 'react'
 import { ui } from '@/shared/lib/ui'
 import { updateModules } from '@/actions/instance'
+import { Switch } from '@/shared/components/switch'
 import type { ModuleKey } from '@/features/instance/types'
 
 const MODULES: { key: ModuleKey; label: string; hint: string }[] = [
+  { key: 'calendars', label: 'Agenda', hint: 'Reservas de llamadas y citas' },
   { key: 'courses', label: 'Cursos', hint: 'Cursos online y alumnos' },
   { key: 'funnels', label: 'Embudos', hint: 'Páginas de venta y lanzamiento' },
   { key: 'websites', label: 'Sitios web', hint: 'Webs de varias páginas' },
@@ -34,25 +36,22 @@ export function ModulesForm({ modules }: { modules: Record<ModuleKey, boolean> }
         <h2 className="font-semibold">Módulos</h2>
         <p className="text-sm text-muted mt-1">
           Oculta del menú las secciones que esta instancia no usa. Lo ya publicado (páginas,
-          formularios, accesos a cursos) sigue funcionando.
+          formularios, reservas, accesos a cursos) sigue funcionando.
         </p>
       </div>
       <div className="divide-y divide-border">
         {MODULES.map((m) => (
-          <label key={m.key} className="flex items-center justify-between gap-4 py-3 cursor-pointer">
+          <div key={m.key} className="flex items-center justify-between gap-4 py-3">
             <span>
-              <span className="block text-sm font-medium">{m.label}</span>
+              <span id={`module-${m.key}`} className="block text-sm font-medium">{m.label}</span>
               <span className="block text-xs text-muted">{m.hint}</span>
             </span>
-            <input
-              type="checkbox"
-              role="switch"
-              aria-label={m.label}
+            <Switch
               checked={values[m.key]}
-              onChange={(e) => setValues((v) => ({ ...v, [m.key]: e.target.checked }))}
-              className="h-5 w-5 accent-[var(--primary)]"
+              labelledBy={`module-${m.key}`}
+              onChange={(checked) => setValues((v) => ({ ...v, [m.key]: checked }))}
             />
-          </label>
+          </div>
         ))}
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}

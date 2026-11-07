@@ -39,7 +39,7 @@ export default async function ContactsPage({
           <div className="p-12 text-center">
             <p className="text-muted">No hay contactos.</p>
             <p className="text-sm text-muted mt-1">
-              Importa tu CSV de GoHighLevel o crea uno nuevo.
+              Importa tu CSV de GoHighLevel o Brevo, o crea uno nuevo.
             </p>
           </div>
         ) : (

@@ -135,6 +135,7 @@ export async function processCampaignBatch(
       unsubscribeUrl: `${base}/unsubscribe/${contact.unsubscribe_token}`,
       rewriteUrl: (url) => `${base}/r/${recipient.click_token}?u=${encodeURIComponent(url)}`,
       viewInBrowserUrl: `${base}/e/${recipient.click_token}`,
+      openPixelUrl: `${base}/o/${recipient.click_token}`,
     })
     const subject = applyMergeTags(campaign.subject, merge)
 
@@ -182,7 +183,7 @@ export async function processCampaigns(): Promise<{
   // Programadas vencidas → sending (transición atómica, sin dobles disparos)
   const due = await query<EmailCampaign>(
     `update email_campaigns
-     set status = 'sending', started_at = now(), scheduled_at = null, updated_at = now()
+     set status = 'sending', started_at = now(), scheduled_at = null, opens_tracked = true, updated_at = now()
      where status = 'scheduled' and scheduled_at <= now()
      returning *`
   )
