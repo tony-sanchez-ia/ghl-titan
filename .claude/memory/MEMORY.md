@@ -239,4 +239,4 @@
   suman etiqueta, por lotes de 500 (2.483 filas en 1,4 s). Etiqueta común también en GHL. Importar NO dispara
   automatizaciones de etiqueta (evita emails masivos). Para Robot Rock: Tony importa el export de Brevo desde
   Contactos → Importar con etiqueta "Compradores 2025 concierto Barcelona Razzmatazz".
-  ORDEN DEPLOY: SQL 0014 en Neon de Robot Rock ANTES de push/deploy (Inicio y Marketing leen opened_at).
+  0014 aplicada también en Robot Rock (Tony vía SQL Editor, verificado 2026-11-07). Push hecho para deploy.
